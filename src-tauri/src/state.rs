@@ -3,6 +3,8 @@ use crate::api::LLMApiProvider; // Import trait
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::AppHandle; // For event emission
+use dashmap::DashMap; // Add import
+use uuid::Uuid;      // Add import
 
 // Core application state accessible by Tauri commands
 #[derive(Clone)] // Allow cloning for background tasks
@@ -15,6 +17,7 @@ pub struct AppState {
     // pub active_models: Mutex<Vec<crate::models::ModelConfig>>,
     pub api_provider: Arc<dyn LLMApiProvider>, // Hold the trait object
     pub app_handle: AppHandle, // Store AppHandle for event emitting
+    pub cancelled_streams: Arc<DashMap<Uuid, bool>>, // Add map for cancellation
 }
 
 impl AppState {
@@ -24,6 +27,7 @@ impl AppState {
             storage: Arc::new(Mutex::new(storage_manager)),
             api_provider,
             app_handle,
+            cancelled_streams: Arc::new(DashMap::new()), // Initialize map
         }
     }
 } 

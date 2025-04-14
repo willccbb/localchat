@@ -155,7 +155,7 @@ impl StorageManager {
 
     /// Creates a new conversation with a default title and the first available model config.
     pub async fn create_conversation(&self) -> Result<Conversation, anyhow::Error> {
-        log::info!("Creating new conversation");
+        println!("RUST_STORAGE: create_conversation entered");
         let default_model_id = self.get_first_model_config_id().await?;
         
         let new_conversation = Conversation {
@@ -187,7 +187,8 @@ impl StorageManager {
         .await
         .context("Failed to insert new conversation into database")?;
 
-        log::info!("Successfully created conversation with ID: {}", new_conversation.id);
+        println!("RUST_STORAGE: Saved new conversation. ID: {}", new_conversation.id);
+
         Ok(new_conversation)
     }
 

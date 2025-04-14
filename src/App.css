@@ -4,7 +4,7 @@
 @import "katex/dist/katex.min.css";
 
 /* Import highlight.js theme (e.g., github-dark) */
-@import "highlight.js/styles/github-dark.css"; /* Or choose another theme */
+@import "highlight.js/styles/github.css"; /* Switch back to light theme */
 
 /* Tailwind Directives */
 @tailwind base;
@@ -35,7 +35,7 @@ html, body, #root {
     --popover-foreground: 240 10% 3.9%;
     --primary: 240 5.9% 10%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
+    --secondary: 25 15% 92%;
     --secondary-foreground: 240 5.9% 10%;
     --muted: 240 4.8% 95.9%;
     --muted-foreground: 240 3.8% 46.1%;
@@ -92,29 +92,7 @@ html, body, #root {
 
 /* You can add other global styles or overrides below */
 
-/* Example: Make scrollbars slightly thinner and styled (optional) */
-::-webkit-scrollbar {
-  width: 8px;  /* Width of the scrollbar */
-  height: 8px; /* Height of the scrollbar (for horizontal) */
-}
-
-::-webkit-scrollbar-track {
-  background: hsl(var(--muted)); /* Track color */
-}
-
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--border)); /* Thumb color */
-  border-radius: 4px; /* Rounded corners */
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--accent)); /* Thumb color on hover */
-}
-
-/* Ensure prose styles apply correctly within components */
-.prose {
-  max-width: none; /* Override Tailwind typography constraint if needed */
-}
+/* REMOVED Global Scrollbar Styles */
 
 /* Remove default browser focus outline when Tailwind focus-visible is used */
 *:focus {
@@ -155,20 +133,14 @@ textarea:focus-visible {
   margin-bottom: 0.5em; /* Space below headings */
   margin-top: 1.25em; /* More space above headings */
 }
+
+/* Restore desired light styling for code blocks */
 .prose pre {
-  margin-top: 1em;    /* Space above code blocks */
-  margin-bottom: 1em; /* Space below code blocks */
-  padding: 0.75em;    /* Internal padding for code blocks */
-  background-color: hsl(var(--muted)); /* Background for code blocks */
-  border-radius: var(--radius); /* Rounded corners */
-  overflow-x: auto; /* Allow horizontal scrolling */
-  color: hsl(var(--foreground)); /* Explicit text color for code blocks */
-}
-.prose code:not(pre code) { /* Inline code styling */
+  padding: 0.75em;
   background-color: hsl(var(--muted));
-  padding: 0.1em 0.3em;
-  border-radius: 0.25rem;
-  color: hsl(var(--foreground)); /* Explicit text color for inline code */
+  border-radius: var(--radius);
+  color: hsl(var(--foreground));
+  /* NOTE: overflow-x is handled by ReactMarkdown renderer */
 }
 
 /* Basic styling for definition lists */
@@ -192,3 +164,9 @@ textarea:focus-visible {
   margin-bottom: 0.5em;
 }
 
+/* REMOVED all custom global scrollbar styles */
+
+/* Ensure base styles allow overrides */
+body {
+  @apply bg-background text-foreground;
+}

@@ -12,7 +12,7 @@ use state::AppState;
 use storage::StorageManager;
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt; // Import the correct trait
-use commands::{list_conversations, create_conversation, get_conversation_messages, delete_conversation, send_message, rename_conversation, list_model_configs, add_model_config, update_model_config, delete_model_config, update_conversation_model}; // Import commands
+use commands::{list_conversations, create_conversation, get_conversation_messages, delete_conversation, send_message, rename_conversation, list_model_configs, add_model_config, update_model_config, delete_model_config, update_conversation_model, stop_generation}; // Import commands
 use crate::api::LLMApiProvider;
 use crate::api::OpenAICompatibleProvider; // Import specific provider
 use std::sync::Arc;
@@ -73,7 +73,8 @@ pub fn run() {
             add_model_config,
             update_model_config,
             delete_model_config,
-            open_url
+            open_url,
+            stop_generation
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

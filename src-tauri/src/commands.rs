@@ -31,14 +31,18 @@ pub async fn list_conversations(state: State<'_, AppState>) -> Result<Vec<Conver
 // Tauri command to create a new conversation
 #[tauri::command]
 pub async fn create_conversation(state: State<'_, AppState>) -> Result<Conversation, String> {
-    log::info!("Frontend requested to create a new conversation");
+    println!("RUST_CMD: create_conversation entered"); // Added log
     let storage_manager = state.storage.lock().await;
+    println!("RUST_CMD: create_conversation got storage lock"); // Added log
     match storage_manager.create_conversation().await {
-        Ok(conversation) => Ok(conversation),
+        Ok(convo) => {
+            println!("RUST_CMD: create_conversation successful. ID: {}", convo.id); // Added log
+            Ok(convo)
+        },
         Err(e) => {
-            log::error!("Failed to create conversation: {:?}", e);
+            println!("RUST_CMD: create_conversation storage error: {}", e); // Added log
             Err(format!("Failed to create conversation: {}", e))
-        }
+        },
     }
 }
 
@@ -228,6 +232,14 @@ pub async fn send_message(
         let mut first_chunk = true;
 
         while let Some(delta_result) = delta_stream.next().await {
+            
+            // >>> Check for cancellation request <<<
+            if app_state_clone.cancelled_streams.contains_key(&assistant_message_id) {
+                log::warn!("BG Task: Cancellation requested for message {}. Stopping stream.", assistant_message_id);
+                app_state_clone.cancelled_streams.remove(&assistant_message_id); // Clean up the flag
+                break; // Exit the stream processing loop
+            }
+
             match delta_result {
                 Ok(delta_content) => {
                     full_content.push_str(&delta_content);
@@ -237,50 +249,66 @@ pub async fn send_message(
                         "conversationId": conversation_id_clone,
                         "messageId": assistant_message_id.to_string(),
                         "delta": delta_content,
-                        "isFirstChunk": first_chunk, // Indicate if it's the start
+                        "isFirstChunk": first_chunk,
                     });
-                    if let Err(e) = app_state_clone.app_handle.emit("assistant_message_chunk", &chunk_payload) {
-                        log::error!("Failed to emit assistant_message_chunk event: {:?}", e);
-                        // Decide if we should break or continue
+                    first_chunk = false;
+                    
+                    if let Err(e) = app_state_clone.app_handle.emit("assistant_message_chunk", chunk_payload) {
+                         log::error!("BG Task: Failed to emit chunk event for {}: {:?}", conversation_id_clone, e);
                     }
-                    first_chunk = false; // No longer the first chunk
-                }
+                },
                 Err(e) => {
-                     log::error!("BG Task: Error receiving stream delta for {}: {:?}", conversation_id_clone, e);
-                     // TODO: Emit an error event to frontend?
-                     // Depending on the error, might want to break the loop
-                     break;
+                    log::error!("BG Task: Error receiving delta for {}: {:?}", conversation_id_clone, e);
+                    // TODO: Emit an error event to frontend?
+                    break; // Stop processing on error
                 }
             }
-        }
-        log::info!("BG Task: Stream finished for conversation {}", conversation_id_clone);
+        } // End of while loop
 
         // --- Save the completed assistant message --- 
-        if !full_content.is_empty() {
+        if !full_content.is_empty() { // Only save if we actually got content
             let assistant_message = Message {
                 id: assistant_message_id,
                 conversation_id: conv_uuid,
                 role: "assistant".to_string(),
                 content: full_content,
-                timestamp: Utc::now(), 
-                metadata: None, // TODO: Could potentially get usage stats somehow if API provides it at the end?
+                timestamp: Utc::now(),
+                metadata: None, // Or maybe add metadata if cancelled?
             };
-
+            
+            log::info!("BG Task: Saving full assistant message {} for conversation {}", assistant_message.id, conversation_id_clone);
+            // We still have the storage lock from the beginning of the task
             if let Err(e) = storage.save_message(&assistant_message).await {
-                 log::error!("BG Task: Failed to save completed assistant message {} for {}: {:?}", assistant_message_id, conversation_id_clone, e);
-            } else {
-                 log::info!("BG Task: Completed assistant message {} saved for {}", assistant_message_id, conversation_id_clone);
+                 log::error!("BG Task: Failed to save assistant message {} for {}: {:?}", assistant_message.id, conversation_id_clone, e);
+            }
+            // Update the conversation's last_updated_at timestamp
+            match storage.get_conversation(conv_uuid).await {
+                Ok(Some(mut conv)) => {
+                    conv.last_updated_at = Utc::now();
+                    if let Err(e) = storage.update_conversation(&conv).await {
+                        log::error!("BG Task: Failed to update conversation last_updated_at for {}: {:?}", conversation_id_clone, e);
+                    }
+                }
+                Ok(None) => log::error!("BG Task: Conversation {} not found when trying to update timestamp", conversation_id_clone),
+                Err(e) => log::error!("BG Task: Failed to get conversation {} to update timestamp: {:?}", conversation_id_clone, e),
             }
         } else {
-            log::warn!("BG Task: Stream finished for {} but received no content.", conversation_id_clone);
+            log::warn!("BG Task: No content received for assistant message {}, not saving.", assistant_message_id);
+        }
+        
+        log::info!("Background task finished for conversation {}", conversation_id_clone);
+
+        // <<< ADDED: Emit stream finished event >>>
+        let finished_payload = serde_json::json!({
+            "messageId": assistant_message_id.to_string()
+        });
+        if let Err(e) = app_state_clone.app_handle.emit("assistant_stream_finished", finished_payload) {
+            log::error!("BG Task: Failed to emit assistant_stream_finished event for {}: {:?}", conversation_id_clone, e);
         }
 
-        // Optionally emit a "done" event if needed by frontend
-        // app_state_clone.app_handle.emit("assistant_stream_done", ...)?; 
+    }); // End of tauri::async_runtime::spawn
 
-    }); // End of async_runtime::spawn
-
-    // Return the user message immediately for optimistic update
+    // Return the original user message immediately to the frontend
     Ok(user_message_clone)
 }
 
@@ -405,5 +433,23 @@ pub async fn delete_model_config(state: State<'_, AppState>, config_id: String) 
 }
 
 // TODO: Commands for getting/setting API keys via keyring
+
+// Tauri command to signal stopping a specific stream
+#[tauri::command]
+pub async fn stop_generation(state: State<'_, AppState>, message_id: String) -> Result<(), String> {
+    log::warn!("Frontend requested to stop generation for message ID: {}", message_id);
+    
+    let Ok(msg_uuid) = Uuid::parse_str(&message_id) else {
+        let err_msg = format!("Invalid message ID format for stop: {}", message_id);
+        log::error!("{}", err_msg);
+        return Err(err_msg);
+    };
+
+    // Add the message ID to the cancellation map
+    state.cancelled_streams.insert(msg_uuid, true);
+    log::info!("Cancellation signal set for message ID: {}", msg_uuid);
+
+    Ok(())
+}
 
 // Add other commands later (create_conversation, get_messages, etc.) 

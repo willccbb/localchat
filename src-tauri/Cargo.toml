@@ -39,6 +39,7 @@ env_logger = "0.11" # Logging implementation
 futures = "0.3" # Added for stream utilities
 # async-stream = "0.3" # Optional helper for creating streams
 eventsource-stream = "^0.2" # For parsing SSE (Corrected version)
+dashmap = "5.5.3" # Added dashmap dependency
 
 # tauri-plugin-sql = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 
@@ -46,4 +47,6 @@ eventsource-stream = "^0.2" # For parsing SSE (Corrected version)
 tauri-plugin-clipboard-manager = "2.0.0-beta" # Add clipboard plugin
 
 [features]
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]
 
