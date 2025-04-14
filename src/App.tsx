@@ -341,7 +341,7 @@ const ChatArea = ({
           <div key={msg.id || index} className={`group relative flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
               className={cn(
-                "p-3 rounded-lg max-w-[75%]",
+                "p-3 rounded-lg",
                 msg.role === 'user' ? 'bg-muted text-foreground' : ''
               )}
             >
