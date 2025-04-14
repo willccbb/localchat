@@ -1,0 +1,19 @@
+/* Reset base styles (Tailwind includes normalize.css or similar) */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Add horizontal scrolling to tables within prose */
+.prose table {
+  display: block; /* Make table behave like a block to contain overflow */
+  overflow-x: auto; /* Enable horizontal scroll on the table itself */
+  /* Remove whitespace-nowrap from the table element */
+}
+
+/* Remove nowrap rule - let table cells wrap by default */
+/*
+.prose table th,
+.prose table td {
+  white-space: nowrap; 
+}
+*/ 

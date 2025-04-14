@@ -7,6 +7,7 @@
   ],
   "permissions": [
     "opener:allow-open-url",
-    "core:event:default"
+    "core:event:default",
+    "core:default"
   ]
 }

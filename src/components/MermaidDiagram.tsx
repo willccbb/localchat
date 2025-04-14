@@ -1,4 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+'use client';
+
+import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
 
 interface MermaidDiagramProps {
@@ -20,45 +22,71 @@ mermaid.initialize({
 
 const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const hasRendered = useRef(false); // Prevent duplicate renders
+  // State to hold the rendered SVG or an error message
+  const [renderedSvg, setRenderedSvg] = useState<string | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   useEffect(() => {
+    mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+
     const renderMermaid = async () => {
-      if (containerRef.current && !hasRendered.current && chart) {
-        const currentContainer = containerRef.current; // Capture ref value
-        try {
-          // Render into the container, get result (MermaidAPI.RenderResult)
-          const { svg } = await mermaid.render('mermaid-svg-' + Date.now(), chart);
-          // Manually set innerHTML after successful render
-          if (currentContainer) { // Check ref again in case component unmounted
-             currentContainer.innerHTML = svg;
-             hasRendered.current = true;
-          }
-        } catch (error) {
-          console.error('Mermaid rendering error:', error);
-          if (currentContainer) {
-            currentContainer.innerHTML = `<pre>Error rendering Mermaid diagram:\n${error instanceof Error ? error.message : String(error)}</pre>`;
-          }
-          hasRendered.current = true; // Mark as rendered even on error
-        }
+      if (!containerRef.current) return;
+      
+      // Reset state for re-renders
+      setRenderedSvg(null);
+      setRenderError(null);
+
+      try {
+        // Generate a unique ID for each diagram
+        const id = `mermaid-${Math.random().toString(36).substring(7)}`;
+        
+        // Use mermaid.render to get SVG source
+        const { svg } = await mermaid.render(id, chart);
+        setRenderedSvg(svg); // Store successful SVG render
+
+      } catch (error: any) {
+        console.error('Mermaid rendering error:', error);
+        // Store error message
+        setRenderError(error instanceof Error ? error.message : String(error));
       }
     };
 
     renderMermaid();
 
-  }, [chart]); // Re-run effect if the chart code changes
+  }, [chart]); // Re-render if the chart definition changes
 
-  // Reset hasRendered flag when chart prop changes
-  useEffect(() => {
-    // Clear previous content when chart changes
-    if (containerRef.current) {
-      containerRef.current.innerHTML = ''; // Clear old diagram
-    }
-    hasRendered.current = false;
-  }, [chart]);
-
-  // Add some basic styling/placeholder
-  return <div ref={containerRef} className="mermaid-container w-full flex justify-center p-4 bg-muted rounded my-2"> Rendering diagram... </div>;
+  return (
+    <div className="mermaid-container my-4 p-2 bg-muted rounded overflow-hidden">
+      {renderError ? (
+        // Display error and raw code on failure
+        <div className="text-sm">
+          <div className="text-red-600 font-semibold mb-2">
+            ⚠️ Error rendering Mermaid diagram:
+          </div>
+          <pre className="text-xs bg-red-50 p-2 rounded overflow-x-auto">
+            {renderError}
+          </pre>
+          <details className="mt-2 text-xs">
+             <summary className="cursor-pointer">Show raw code</summary>
+             <pre className="mt-1 bg-gray-100 dark:bg-gray-800 p-2 rounded overflow-x-auto">
+                {chart}
+             </pre>
+          </details>
+        </div>
+      ) : renderedSvg ? (
+        // Display rendered SVG on success
+        <div 
+          ref={containerRef} 
+          dangerouslySetInnerHTML={{ __html: renderedSvg }} 
+        />
+      ) : (
+        // Show raw code while loading/before rendering
+        <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded overflow-x-auto">
+            {chart}
+        </pre>
+      )}
+    </div>
+  );
 };
 
 export default MermaidDiagram; 

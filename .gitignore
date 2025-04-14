@@ -20,6 +20,9 @@ dist-ssr
 # /src-tauri/target/debug/
 # /src-tauri/target/release/
 
+# SQLx offline data
+src-tauri/.sqlx
+
 # Rust temporary files
 *.rs.bk
 
@@ -48,3 +51,8 @@ Thumbs.db
 
 # Optional script we created
 copy_project_files.sh
+
+# Project planning/design docs
+planning.md
+design.md
+issues.md
