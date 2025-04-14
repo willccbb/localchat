@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/capability.schema.json",
+  "identifier": "default",
+  "description": "Default permissions for the main window.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "opener:allow-open-url",
+    "core:event:default"
+  ]
+}
