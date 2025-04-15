@@ -594,6 +594,29 @@ impl StorageManager {
         Ok(())
     }
 
+    /// Deletes a specific message by its ID.
+    pub async fn delete_message(&self, message_id: Uuid) -> Result<(), anyhow::Error> {
+        log::warn!("Deleting message with ID: {}", message_id);
+        let message_id_text = message_id.to_string();
+
+        let result = sqlx::query(
+            "DELETE FROM messages WHERE id = ?"
+        )
+        .bind(message_id_text)
+        .execute(&self.pool)
+        .await
+        .context(format!("Failed to delete message with ID: {}", message_id))?;
+
+        if result.rows_affected() == 0 {
+            log::warn!("Attempted to delete message {} but it was not found.", message_id);
+            // Depending on requirements, you might return an error here or just log it.
+            // For regeneration, proceeding might be okay if the message was already gone.
+        }
+
+        log::info!("Successfully deleted message {} (or it didn't exist).", message_id);
+        Ok(())
+    }
+
     pub fn pool(&self) -> &SqlitePool {
         &self.pool // Make the pool accessible if needed elsewhere (removes dead code warning for pool)
     }

@@ -452,4 +452,184 @@ pub async fn stop_generation(state: State<'_, AppState>, message_id: String) -> 
     Ok(())
 }
 
+// Command to regenerate the last assistant response
+#[tauri::command]
+pub async fn regenerate_last_response(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<(), String> {
+    log::info!("Frontend requested to regenerate last response for conversation ID: {}", conversation_id);
+
+    let Ok(conv_uuid) = Uuid::parse_str(&conversation_id) else {
+        let err_msg = format!("Invalid conversation ID format for regenerate: {}", conversation_id);
+        log::error!("{}", err_msg);
+        return Err(err_msg);
+    };
+
+    let storage = state.storage.lock().await;
+
+    // --- Get conversation history (up to last user message) ---
+    let messages = match storage.get_conversation_messages(conv_uuid).await {
+        Ok(msgs) => msgs,
+        Err(e) => return Err(format!("Failed to get messages for regenerate: {}", e)),
+    };
+
+    // Find the index of the last assistant message
+    let last_assistant_index = messages.iter().rposition(|m| m.role == "assistant");
+
+    let Some(last_assistant_idx) = last_assistant_index else {
+        return Err("No previous assistant message found to regenerate.".to_string());
+    };
+
+    let last_assistant_message = &messages[last_assistant_idx];
+    let last_assistant_message_id = last_assistant_message.id;
+
+    // Get messages up to (but not including) the last assistant message
+    let history_for_api = messages[..last_assistant_idx].to_vec(); // Clone the relevant part
+
+    // --- Delete the last assistant message ---
+    if let Err(e) = storage.delete_message(last_assistant_message_id).await { // Assuming delete_message exists
+        log::error!("Failed to delete previous assistant message {}: {:?}. Continuing regeneration anyway.", last_assistant_message_id, e);
+        // Decide if we should stop or continue if deletion fails. Let's continue for now.
+        // return Err(format!("Failed to delete previous assistant message: {}", e));
+    } else {
+        log::info!("Successfully deleted previous assistant message {}", last_assistant_message_id);
+    }
+
+    // --- Get ModelConfig for this conversation ---
+    let conversation = match storage.get_conversation(conv_uuid).await { // Assuming get_conversation exists
+        Ok(Some(c)) => c,
+        Ok(None) => return Err(format!("Conversation {} not found for regenerate", conversation_id)),
+        Err(e) => return Err(format!("Failed to get conversation {} for regenerate: {}", conversation_id, e)),
+    };
+
+    let model_config = match get_model_config(&storage, conversation.model_config_id).await {
+        Ok(mc) => mc,
+        Err(e) => return Err(format!("Failed to get model config for {}: {}", conversation_id, e)),
+    };
+
+    drop(storage); // Release lock before potentially long API call
+
+    // --- Trigger API call in background (similar to send_message) ---
+    let app_state_clone = state.inner().clone();
+    let conversation_id_clone = conversation_id.clone();
+
+    tauri::async_runtime::spawn(async move {
+        log::info!("Regeneration BG task started for conversation {}", conversation_id_clone);
+
+        // --- Create System Prompt ---
+        let system_prompt_content = format!("You are {}.", model_config.name);
+        let system_prompt = Message {
+            id: Uuid::nil(), // API usually ignores system ID
+            conversation_id: conv_uuid,
+            role: "system".to_string(),
+            content: system_prompt_content,
+            timestamp: Utc::now(),
+            metadata: None,
+        };
+
+        // --- Get API Key ---
+        let api_key = match config::get_api_key(&model_config) {
+            Ok(key) => key,
+            Err(e) => {
+                 log::error!("Regeneration BG Task: Failed to get API key for {}: {:?}", conversation_id_clone, e);
+                 return;
+            }
+        };
+        
+        // --- Prepare messages for API (system prompt + history UP TO last assistant) --- 
+        let mut api_messages = vec![system_prompt];
+        api_messages.extend(history_for_api.iter().cloned()); // Use the history before last assistant msg
+
+        // --- Get API Provider --- 
+        let api_provider = app_state_clone.api_provider.clone(); 
+
+        // --- Make the API call (Streaming) --- 
+        log::info!("Regeneration BG Task: Starting stream request for conversation {}", conversation_id_clone);
+        let delta_stream_result = api_provider
+            .send_chat_stream_request(&model_config, &api_key, &api_messages)
+            .await;
+
+        let mut delta_stream = match delta_stream_result {
+            Ok(stream) => stream,
+            Err(e) => {
+                log::error!("Regeneration BG Task: Failed to initiate stream request for {}: {:?}", conversation_id_clone, e);
+                return;
+            }
+        };
+        
+        // --- Process Stream and Emit Chunks (identical logic to send_message) --- 
+        let mut full_content = String::new();
+        let assistant_message_id = Uuid::new_v4(); // Generate NEW ID for the regenerated message
+        let mut first_chunk = true;
+        let app_handle_clone = app_state_clone.app_handle.clone(); // Clone handle for emitting
+
+        while let Some(delta_result) = delta_stream.next().await {
+            
+            // Check for cancellation
+            if app_state_clone.cancelled_streams.contains_key(&assistant_message_id) {
+                log::warn!("Regeneration BG Task: Cancellation requested for message {}. Stopping stream.", assistant_message_id);
+                app_state_clone.cancelled_streams.remove(&assistant_message_id); 
+                break; 
+            }
+
+            match delta_result {
+                Ok(delta_content) => {
+                    full_content.push_str(&delta_content);
+                    let is_first = first_chunk;
+                    if first_chunk { first_chunk = false; }
+                    
+                    // Emit the chunk to the frontend
+                    let chunk_payload = serde_json::json!({
+                        "conversationId": conversation_id_clone,
+                        "messageId": assistant_message_id.to_string(),
+                        "delta": delta_content,
+                        "isFirstChunk": is_first,
+                    });
+                    
+                    if let Err(e) = app_handle_clone.emit("assistant_message_chunk", chunk_payload) {
+                        log::error!("Regeneration BG Task: Failed to emit chunk event: {:?}", e);
+                        // Consider stopping the stream if emit fails repeatedly
+                    }
+                }
+                Err(e) => {
+                    log::error!("Regeneration BG Task: Error receiving stream delta: {:?}", e);
+                    break; // Stop processing on stream error
+                }
+            }
+        }
+
+        // --- Stream finished or cancelled ---
+        log::info!("Regeneration BG Task: Stream finished/cancelled for message {}", assistant_message_id);
+        
+        // Emit finished event regardless of cancellation status 
+        // Frontend handles state based on whether it received chunks
+        let finished_payload = serde_json::json!({ "messageId": assistant_message_id.to_string() });
+        if let Err(e) = app_handle_clone.emit("assistant_stream_finished", finished_payload) {
+             log::error!("Regeneration BG Task: Failed to emit finished event: {:?}", e);
+        }
+
+        // --- Save the complete assistant message (if content received) ---
+        if !full_content.is_empty() {
+            let assistant_message = Message {
+                id: assistant_message_id,
+                conversation_id: conv_uuid,
+                role: "assistant".to_string(),
+                content: full_content,
+                timestamp: Utc::now(),
+                metadata: None,
+            };
+            
+            let storage = app_state_clone.storage.lock().await;
+            if let Err(e) = storage.save_message(&assistant_message).await {
+                log::error!("Regeneration BG Task: Failed to save regenerated assistant message {}: {:?}", assistant_message_id, e);
+            }
+        } else {
+             log::warn!("Regeneration BG Task: No content received for message {}, not saving.", assistant_message_id);
+        }
+    });
+
+    Ok(())
+}
+
 // Add other commands later (create_conversation, get_messages, etc.) 

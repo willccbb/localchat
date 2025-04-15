@@ -10,19 +10,21 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "localchat",
-        "width": 800,
-        "height": 600
-      }
-    ],
     "security": {
       "csp": null,
       "capabilities": [
         "default"
       ]
-    }
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "localchat",
+        "width": 1000,
+        "height": 700,
+        "decorations": true
+      }
+    ]
   },
   "bundle": {
     "active": true,

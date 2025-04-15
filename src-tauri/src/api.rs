@@ -6,8 +6,6 @@ use serde::{Deserialize, Serialize};
 use futures::{stream, Stream, StreamExt};
 use eventsource_stream::Eventsource;
 use std::pin::Pin;
-use chrono::Utc;
-use uuid::Uuid;
 
 // Alias for the stream type we'll return
 pub type DeltaStream = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;

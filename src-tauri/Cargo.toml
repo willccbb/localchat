@@ -18,6 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# Remove incorrect feature from core tauri dependency
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
@@ -45,8 +46,13 @@ dashmap = "5.5.3" # Added dashmap dependency
 
 # Tauri Plugins
 tauri-plugin-clipboard-manager = "2.0.0-beta" # Add clipboard plugin
+tauri-plugin-store = "2.0.0-beta"
+tauri-plugin-global-shortcut = "2.0.0-beta"
 
 [features]
 # DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
+
+[target."cfg(target_os = \"macos\")".dependencies]
+cocoa = "0.26"
 

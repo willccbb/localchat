@@ -6,7 +6,8 @@ import { listen } from '@tauri-apps/api/event';
 import { confirm } from '@tauri-apps/plugin-dialog';
 // No direct opener import needed now
 // import * as opener from '@tauri-apps/plugin-opener'; 
-// import { writeText } from '@tauri-apps/api/clipboard'; // Revert: Build cannot resolve
+// Import clipboard API module
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import './App.css'; // We can add styles here later
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -15,8 +16,10 @@ import rehypeKatex from 'rehype-katex'; // Import rehype-katex
 import rehypeHighlight from 'rehype-highlight'; // Import rehype-highlight
 import rehypeRaw from 'rehype-raw'; // Import rehype-raw
 import { Button } from "@/components/ui/button"; // Import shadcn Button
-// Revert: Remove Copy icon import
-import { Plus, Settings, Trash2, SendHorizonal, Pencil } from "lucide-react"; 
+// Use Tauri v2 clipboard API
+// Attempting core clipboard API import
+// import { clipboard } from '@tauri-apps/api';
+import { Plus, Settings, Trash2, SendHorizonal, Pencil, ClipboardCopy, Check } from "lucide-react"; 
 import { Textarea } from "@/components/ui/textarea"; // Import Textarea
 import {
   Select,
@@ -33,8 +36,10 @@ import MermaidDiagram from '@/components/MermaidDiagram'; // Import Mermaid comp
 // Remove StreamingMarkdownRenderer import
 // import StreamingMarkdownRenderer from '@/components/StreamingMarkdownRenderer'; 
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Square, Edit2, Check, X, Loader2, RefreshCw, CircleHelp } from "lucide-react";
+import { Square, Edit2, X, Loader2, RefreshCw, CircleHelp } from "lucide-react";
 import { v4 as uuidv4 } from 'uuid'; // For generating temporary IDs
+import { Components } from 'react-markdown'; // Import Components type
+import { register, unregisterAll } from '@tauri-apps/plugin-global-shortcut'; // Use plugin-specific path
 
 // Import Select types explicitly
 import type { 
@@ -261,8 +266,9 @@ const SettingsPage = ({ onModelsChanged }: SettingsPageProps) => {
   return (
     // Make the OUTERMOST element the ScrollArea
     <ScrollArea 
-      className="px-6 pt-6 h-full" // CHANGED p-6 to px-6 pt-6
-      thumbClassName="!bg-blue-500/50" // Apply blue scrollbar
+      className={cn(
+        "px-6 pt-6 pb-6 h-full" // Keep padding, remove relative and fade classes
+      )}
     >
       {/* Place all content directly inside ScrollArea */}
       <h1 className="text-2xl font-semibold mb-6">Settings</h1> {/* REMOVED flex-shrink-0 */} 
@@ -374,7 +380,11 @@ const ChatArea = ({
   handleModelChange,
   isStreaming,
   handleStopGeneration,
-  thumbClassName,
+  handleCopy,
+  handleRegenerate,
+  copiedMessageId,
+  isLoading,
+  streamingMessageId,
 }: { 
   currentMessages: Message[], 
   currentInput: string, 
@@ -385,141 +395,191 @@ const ChatArea = ({
   handleModelChange: (newModelConfigId: string) => Promise<void>,
   isStreaming: boolean,
   handleStopGeneration: () => Promise<void>,
-  thumbClassName?: string
+  handleCopy: (id: string, content: string) => Promise<void>,
+  handleRegenerate: () => Promise<void>,
+  copiedMessageId: string | null,
+  isLoading: boolean,
+  streamingMessageId: string | null,
 }) => {
-  console.log('ChatArea received currentMessages:', currentMessages);
+  console.log('ChatArea received:', { isStreaming, streamingMessageId });
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  // REMOVE manual scroll state/refs
-  // const scrollContainerRef = useRef<HTMLDivElement>(null);
-  // const [autoScroll, setAutoScroll] = useState(true); 
 
-  // Scroll to bottom effect - Keep this, ScrollArea might not auto-scroll perfectly with streams
-  useEffect(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [currentMessages]); // Dependency only on messages changing
+  // --- Define components statically outside the map --- 
+  const markdownComponents: Components = {
+    // Custom link renderer
+    a: ({node, href, ...props}) => {
+      const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+        e.preventDefault(); // Prevent default navigation
+        if (href) {
+          // Invoke the Rust command `open_url`
+          invoke('open_url', { url: href })
+            .catch((err: any) => console.error("Failed to invoke open_url:", err));
+        }
+      };
+      // Render an anchor tag, but handle click via invoke
+      return <a href={href} onClick={handleClick} {...props} />;
+    },
 
-  // REMOVE manual scroll handler
-  // const handleScroll = (e: React.UIEvent<HTMLDivElement>) => { ... };
+    // Custom code renderer (conditionally simplified)
+    code({ node, className, children, style, ...rest }) {
+      const isCurrentlyStreaming = isStreaming; // Simplified check: render basic if *anything* is streaming
+
+      if (isCurrentlyStreaming) {
+        // Simple rendering during stream
+        return <code {...rest} className={className}>{children}</code>;
+      }
+      
+      // Full rendering after stream (or if not streaming) - Revert to rehypeHighlight logic
+      const match = /language-(\w+)/.exec(className || '');
+      if (match && match[1] === 'mermaid') {
+         return <MermaidDiagram chart={String(children).replace(/\n$/, '')} />
+      }
+
+      // Let rehypeHighlight handle classes for code blocks and inline code
+      // Apply overflow only if it's likely a block (has language class)
+      const finalClassName = match ? cn(className, "overflow-x-auto w-full") : className;
+      return (
+        <code {...rest} className={finalClassName}>
+          {children}
+        </code>
+      );
+    },
+
+    // Custom pre renderer (conditionally simplified) - Revert logic
+    pre: ({ node, children, className: initialClassName, ...props }: any) => {
+      const isCurrentlyStreaming = isStreaming; // Simplified check
+
+      if (isCurrentlyStreaming) {
+        // Simple rendering during stream
+        return <pre {...props} className={cn(initialClassName, "block overflow-x-auto w-full")}>{children}</pre>;
+      }
+
+      // Full rendering after stream (or if not streaming)
+      // Use logic similar to before, relying on rehypeHighlight structure
+      let isCodeBlock = false;
+      if (React.isValidElement(children) && children.type === 'code') {
+        if (React.isValidElement(children) && (children as React.ReactElement).type === 'code') {
+          isCodeBlock = true;
+        }
+      }
+      // Add back relative positioning needed for action buttons
+      const finalClassName = isCodeBlock 
+        ? cn(initialClassName, "block overflow-x-auto w-full relative") 
+        : initialClassName; 
+      return (
+        <pre {...props} className={finalClassName}>
+          {children}
+        </pre>
+      );
+    },
+  };
 
   return (
-    // Restore h-full, remove root padding/spacing
     <div className="flex flex-col w-full h-full"> 
       {/* Top Bar: Model Selector - Restore padding, keep shrink */}
       {currentConversation && availableModels.length > 0 && (
-        <div className="p-3 border-b border-border flex justify-end w-full flex-shrink-0">
-          {/* Shadcn Select component */}
-          <Select 
-            value={currentConversation.model_config_id}
-            onValueChange={handleModelChange}
-          >
-            {/* Trigger contains the visual element */} 
-            <SelectTrigger className="w-[280px]">
-              {/* Value displays the selected value, with a placeholder */}
-              <SelectValue placeholder="Select model" />
-            </SelectTrigger>
-            {/* Content contains the dropdown items */} 
-            <SelectContent>
-              {availableModels.map(model => (
-                // Item represents each option 
-                <SelectItem key={model.id} value={model.id}>
-                  {model.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div data-tauri-drag-region className="w-full flex-shrink-0"> {/* Apply drag region to outer wrapper */} 
+          <div className="p-3 border-b border-border flex justify-end"> {/* Inner container for padding/layout */} 
+            {/* Shadcn Select component */}
+            <Select 
+              value={currentConversation.model_config_id}
+              onValueChange={handleModelChange}
+            >
+              {/* Trigger contains the visual element */} 
+              <SelectTrigger className="w-[220px]">
+                {/* Value displays the selected value, with a placeholder */}
+                <SelectValue placeholder="Select model" />
+              </SelectTrigger>
+              {/* Content contains the dropdown items */} 
+              <SelectContent>
+                {availableModels.map(model => (
+                  // Item represents each option 
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       )}
 
       {/* Message list - Use ScrollArea */}
       <ScrollArea 
-        className="flex-grow p-4 space-y-4 min-h-0"
-        thumbClassName={thumbClassName}
+        className="flex-grow px-6 pb-0 space-y-4 min-h-0"
       >
-        {/* Render messages directly from the list */}
+        <div className="h-4 flex-shrink-0"></div> {/* Top spacer */} 
         {currentMessages.map((msg, index) => {
-          const displayContent = msg.content; // Always use msg.content
+          const displayContent = msg.content; 
+
           return (
-          <div key={msg.id || index} className={`group relative flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {/* Outer message bubble: Added min-w-0 max-w-full */}
+           <div 
+             key={msg.id || index} 
+             className={cn(
+               "group relative flex mb-4", 
+               msg.role === 'user' ? 'justify-end' : 'justify-start'
+             )}
+           >
             <div 
               className={cn(
                 "p-3 rounded-lg min-w-0 max-w-full", 
                 msg.role === 'user' ? 'bg-secondary text-foreground' : ''
               )}
             >
-              {/* Inner content: Add break-words, prevent prose bg on pre */}
               <div className="prose dark:prose-invert prose-sm \
                                break-words \
+                               prose-p:m-0 prose-pre:m-2 prose-pre:p-0 prose-pre:bg-transparent \
                                prose-table:block prose-table:max-w-none prose-table:overflow-x-auto prose-table:min-w-full">
                   <ReactMarkdown 
                     remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeRaw, rehypeKatex, rehypeHighlight]}
-                    components={{
-                      // Custom link renderer to invoke Rust command
-                      a: ({node, href, ...props}) => {
-                        const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-                          e.preventDefault(); // Prevent default navigation
-                          if (href) {
-                            // Invoke the Rust command `open_url`
-                            invoke('open_url', { url: href })
-                              .catch((err: any) => console.error("Failed to invoke open_url:", err));
-                          }
-                        };
-                        // Render an anchor tag, but handle click via invoke
-                        return <a href={href} onClick={handleClick} {...props} />;
-                      },
-                      // Custom renderer for code blocks
-                      code({ node, className, children, ...rest }) {
-                        const match = /language-(\w+)/.exec(className || '')
-                        // Only handle mermaid explicitly
-                        if (match && match[1] === 'mermaid') {
-                          return <MermaidDiagram chart={String(children).replace(/\n$/, '')} />
-                        }
-                        // Conditionally apply overflow classes ONLY if it's a code block
-                        const finalClassName = className 
-                          ? cn(className, "overflow-x-auto w-full") // Apply overflow AND w-full
-                          : className; // Use original/default className otherwise
-                        // Let prose/highlighting handle regular code/pre
-                        return (
-                          <code {...rest} className={finalClassName}>
-                            {children}
-                          </code>
-                        );
-                      },
-                      // Custom PRE renderer to apply overflow ONLY to code blocks
-                      pre: ({ node, children, className: initialClassName, ...props }) => {
-                        // Detect if the direct child is a <code> element
-                        let isCodeBlock = false;
-                        if (React.isValidElement(children) && children.type === 'code') {
-                          isCodeBlock = true;
-                        }
-                        
-                        // Conditionally apply overflow classes ONLY if it's a code block
-                        const finalClassName = isCodeBlock 
-                          // Apply overflow-x-auto AND w-full
-                          ? cn(initialClassName, "overflow-x-auto w-full") // Apply overflow AND w-full
-                          : initialClassName; // Use original/default className otherwise
-                          
-                        return (
-                          <pre {...props} className={finalClassName}>
-                            {children}
-                          </pre>
-                        );
-                      },
-                    }}
+                    rehypePlugins={[rehypeRaw, rehypeKatex, rehypeHighlight]} // Add rehypeHighlight back
+                    components={markdownComponents} // Use statically defined components
                   >
                      {typeof displayContent === 'string' ? displayContent : ''}
                   </ReactMarkdown>
               </div>
+              {/* === ACTION BUTTONS START === */}
+              <div className="absolute bottom-1 right-1 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 rounded p-0.5">
+                {/* Copy Button */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => handleCopy(msg.id, displayContent)}
+                  title="Copy"
+                >
+                  {copiedMessageId === msg.id ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <ClipboardCopy className="h-4 w-4" />
+                  )}
+                </Button>
+
+                {/* Regenerate Button (Conditional) */}
+                {index === currentMessages.length - 1 && msg.role === 'assistant' && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={handleRegenerate}
+                    disabled={isLoading || isStreaming} // Disable if loading/streaming
+                    title="Regenerate"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              {/* === ACTION BUTTONS END === */}
             </div>
-          </div>
+           </div>
           );
         })}
-        <div ref={messagesEndRef} /> {/* Keep the ref for scrolling */}
+        <div ref={messagesEndRef} /> 
+        <div className="h-10 flex-shrink-0"></div> 
       </ScrollArea>
 
       {/* Input Area / Stop Button Container - REMOVED justify-center */}
-      <div className="p-4 flex-shrink-0">
+      <div className="px-6 pb-4 flex-shrink-0">
         {isStreaming ? (
           // Wrap Stop Button in a centering div
           <div className="flex justify-center">
@@ -540,7 +600,7 @@ const ChatArea = ({
               value={currentInput}
               onChange={(e) => setCurrentInput(e.target.value)}
               placeholder="Type your message..."
-              className="flex-grow resize-none bg-secondary border-0 rounded-md p-2.5 focus:outline-none focus:ring-0 focus:shadow-none focus:border-transparent"
+              className="relative z-10 flex-grow resize-none bg-secondary border-0 rounded-md p-3 focus:outline-none focus:ring-0 focus:shadow-none focus:border-transparent shadow-[0px_0px_20px_20px_rgba(255,255,255,1.0)]"
               rows={1}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -572,6 +632,7 @@ interface AssistantStreamFinished {
 
 function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [currentMessages, setCurrentMessages] = useState<Message[]>([]);
   const [currentInput, setCurrentInput] = useState('');
@@ -586,6 +647,23 @@ function App() {
   // State for streaming status
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+
+  // Refs for debouncing the message update
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const accumulatedContentRef = useRef<string>(''); // Stores full content for the current streaming message
+
+  // --- Debounced function to update React state (defined outside useEffect) ---
+  const updateMessagesDebounced = useCallback(() => {
+      // No need to read streamingMessageId here, use the one captured in the closure
+      // when the timer was set, or rely on the check within the listener
+      setCurrentMessages(prevMessages =>
+          prevMessages.map(msg =>
+              msg.id === streamingMessageId // Use the state variable holding the ID
+                  ? { ...msg, content: accumulatedContentRef.current } // Update with latest accumulated content
+                  : msg
+          )
+      );
+  }, [setCurrentMessages, streamingMessageId]); // Dependencies: only need setter + the ID used inside
 
   // Helper to find the full Conversation object
   const currentConversation = conversations.find(c => c.id === currentConversationId);
@@ -667,44 +745,68 @@ function App() {
           const { conversationId, messageId, delta, isFirstChunk } = event.payload;
 
           // --- Check if related to current convo --- 
-          let currentId = null;
-          setCurrentConversationId(id => { currentId = id; return id; }); // Get latest ID
-          if (conversationId !== currentId) {
+          if (conversationId !== currentConversationId) {
               return; // Ignore chunks for other convos
           }
           
-          // --- Update message list directly ---
           if (isFirstChunk) {
-              // Set streaming state ONCE on first chunk
-              if (!isStreaming) {
-                  console.log(`>>> Listener: First chunk for ${messageId}. Setting isStreaming=true.`); 
-                  setIsStreaming(true);
-                  console.log(`>>> Listener: State AFTER setIsStreaming(true): isStreaming=true (expected)`);
-                  setStreamingMessageId(messageId);
-              }
-              // Add placeholder message with initial delta
-              setCurrentMessages(prevMessages => [
-                  ...prevMessages,
-                  {
-                      id: messageId, 
-                      conversation_id: conversationId,
-                      role: 'assistant' as 'assistant',
-                      content: delta, // Start with first chunk content
-                      timestamp: new Date().toISOString(),
-                      metadata: undefined,
-                  }
-              ]);
-          } else {
-              // Append delta to the existing message in the list
-              setCurrentMessages(prevMessages =>
-                prevMessages.map(msg => 
-                    msg.id === messageId 
-                        ? { ...msg, content: msg.content + delta } // Append to content
-                        : msg
-                )
-              );
-          }
+             // --- Update streaming state and prepare placeholder on first chunk ---
+             // Use functional update to safely check/set isStreaming
+             setIsStreaming(prevIsStreaming => {
+                 console.log(`>>> Listener: First chunk for ${messageId}. Setting isStreaming=true.`); 
+                 if (!prevIsStreaming) {
+                     setStreamingMessageId(messageId); // Store the ID of the message we're streaming
+                     accumulatedContentRef.current = delta; // Initialize accumulator
+                     // Add placeholder message immediately (no debounce needed for this)
+                     setCurrentMessages(prevMessages => [
+                         ...prevMessages,
+                         {
+                             id: messageId, 
+                             conversation_id: conversationId,
+                             role: 'assistant' as 'assistant',
+                             content: delta, // Initial content
+                             timestamp: new Date().toISOString(),
+                             metadata: undefined,
+                         }
+                     ]);
+                     return true;
+                 }
+                 return prevIsStreaming; // Already streaming, no change
+             });
 
+          } else {
+             // --- Accumulate content and debounce state update for subsequent chunks ---
+             // Use functional update to get latest streamingMessageId for comparison
+             setStreamingMessageId(currentStreamingId => {
+                 if (messageId !== currentStreamingId) {
+                     console.log(`Chunk for ${messageId} ignored, current stream is ${currentStreamingId}`);
+                     return currentStreamingId; // Ignore chunk if not for current stream
+                 }
+
+                 accumulatedContentRef.current += delta; // Append to accumulator
+
+                 // Clear existing timer if present
+                 if (debounceTimerRef.current) {
+                     clearTimeout(debounceTimerRef.current);
+                 }
+
+                 // Set a new timer - Capture current value of accumulator
+                 const currentAccumulated = accumulatedContentRef.current;
+                 debounceTimerRef.current = setTimeout(() => {
+                     // Update using the captured value when timer fires
+                     setCurrentMessages(prevMessages =>
+                       prevMessages.map(msg =>
+                           msg.id === currentStreamingId // Use the ID from state closure
+                               ? { ...msg, content: currentAccumulated } // Update with captured accumulated content
+                               : msg
+                       )
+                     );
+                     debounceTimerRef.current = null; // Clear timer ID
+                 }, 100); // Debounce interval (100ms)
+
+                 return currentStreamingId; // Keep the ID
+             });
+          }
         });
       } catch (e) {
         console.error("Failed to set up assistant message chunk listener:", e);
@@ -714,29 +816,55 @@ function App() {
 
     setupChunkListener();
 
-    // Cleanup listener on unmount
+    // Cleanup listener and debounce timer on unmount
     return () => {
-      console.log('Cleaning up assistant chunk listener');
+      console.log('Cleaning up assistant chunk listener and debounce timer');
+      if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
+          debounceTimerRef.current = null;
+      }
+      accumulatedContentRef.current = ''; // Reset accumulator
       if (unlistenChunkFn) {
         unlistenChunkFn();
       }
     };
-  }, []); // Dependency: isStreaming is removed as we set it internally
+  }, [currentConversationId, isStreaming, setCurrentMessages, setStreamingMessageId]); // Adjusted dependencies
 
-  // <<< NEW: Listen for stream FINISHED event from backend >>>
+  // <<< Listen for stream FINISHED event from backend >>>
   useEffect(() => {
     let unlistenFinishedFn: (() => void) | null = null;
+
+    // Define the final update logic here, separate from the debounced one used during streaming
+    const performFinalUpdate = (targetMessageId: string) => {
+      setCurrentMessages(prevMessages =>
+          prevMessages.map(msg =>
+              msg.id === targetMessageId 
+                  ? { ...msg, content: accumulatedContentRef.current } // Use final accumulated content
+                  : msg
+          )
+      );
+    };
 
     async function setupFinishedListener() {
       try {
         unlistenFinishedFn = await listen<AssistantStreamFinished>('assistant_stream_finished', (event) => {
           const { messageId } = event.payload;
-          console.log(`>>> Finished Listener: Received finished signal for ${messageId}.`);
-          
-          // Use functional update for state check to get latest value
+
+          // Need latest streamingMessageId for comparison & cleanup
           setStreamingMessageId(currentId => {
             if (messageId === currentId) {
               console.log(`>>> Finished Listener: Matched streamingMessageId (${currentId}). Resetting state.`);
+              
+              // --- Final Update (Ensure last chunk is rendered) --- 
+              // Clear any pending debounce timer for this message 
+              if (debounceTimerRef.current) { 
+                  clearTimeout(debounceTimerRef.current); 
+                  debounceTimerRef.current = null; 
+              } 
+              // Perform one final state update immediately after stream finishes 
+              performFinalUpdate(currentId); // Use the ID we know matched
+              accumulatedContentRef.current = ''; // Reset accumulator
+              
               setIsStreaming(false);
               console.log(`>>> Finished Listener: State AFTER setIsStreaming(false): isStreaming=false (expected)`);
               return null; // Reset the ID
@@ -761,10 +889,10 @@ function App() {
         unlistenFinishedFn();
       }
     };
-  }, []); // Run only on mount
+  }, [streamingMessageId, setCurrentMessages, setStreamingMessageId]); // Added dependencies needed by performFinalUpdate closure
 
   // Handle creating a new conversation
-  const handleNewConversation = async () => {
+  const handleNewConversation = useCallback(async () => {
     console.log("Creating new conversation...");
     setError(null);
     setIsLoading(true);
@@ -792,7 +920,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [availableModels, conversations, navigate, setError, setIsLoading, setCurrentConversationId, setCurrentInput]); // Dependencies for useCallback
 
   // Handle sending a message
   const handleSendMessage = async () => {
@@ -985,27 +1113,131 @@ function App() {
   };
   // --- End Rename Handlers ---
 
+  // Handle Copying Message Content (Clipboard API import commented out for now)
+  const handleCopy = async (id: string, content: string) => {
+    console.log(`Attempting to copy message ${id}`);
+    setError(null);
+    try {
+      await writeText(content); // Uncommented clipboard call
+      setCopiedMessageId(id);
+      setTimeout(() => setCopiedMessageId(null), 1500); // Reset icon after 1.5s
+    } catch (err) {
+      console.error('Failed to copy text:', err);
+      setError(`Failed to copy: ${String(err)}`);
+      setCopiedMessageId(null); // Ensure icon resets on error
+    }
+  };
+
+  // Handle Regenerating Last Assistant Response (Requires backend command)
+  const handleRegenerate = async () => {
+      if (!currentConversationId) return;
+      console.log(`Regenerating last response for conversation ${currentConversationId}...`);
+      setError(null);
+      setIsLoading(true); // Use main loading state for now
+
+      // Optimistically remove the last assistant message from UI
+      let removedMessageId: string | null = null;
+      setCurrentMessages(prevMessages => {
+        if (prevMessages.length === 0) return prevMessages;
+        const lastMessage = prevMessages[prevMessages.length - 1];
+        if (lastMessage.role === 'assistant') {
+          removedMessageId = lastMessage.id; // Store ID for potential rollback
+          console.log(`Optimistically removing assistant message ${removedMessageId}`);
+          return prevMessages.slice(0, -1); // Return array without the last message
+        } else {
+          console.warn("Regenerate called but last message is not from assistant.");
+          return prevMessages; // No change if last message isn't assistant
+        }
+      });
+
+      try {
+        // Assumes backend has a command 'regenerate_last_response'
+        await invoke('regenerate_last_response', { conversationId: currentConversationId });
+        console.log('Regenerate command invoked.');
+        // Backend should handle deleting old msg and sending new chunks via listener
+      } catch (err) {
+          console.error('Error invoking regenerate command:', err);
+          setError(`Failed to invoke regenerate: ${String(err)}`);
+          // Don't reset isLoading here, use finally
+      } finally {
+          // Ensure isLoading is reset after the invoke attempt, regardless of stream outcome
+          setIsLoading(false); 
+      }
+      // isLoading will be set to false by the stream finished listener
+  };
+
   // Effect to load messages when currentConversationId changes
   useEffect(() => {
     loadMessages(currentConversationId);
   }, [currentConversationId]);
 
+  // --- Global Shortcut Setup --- 
+  useEffect(() => {
+    let isRegistered = false;
+    const shortcut = 'Command+N'; // Revert back to desired shortcut
+
+    const registerShortcut = async () => {
+      try {
+        console.log('Attempting to register shortcut...');
+        await register(shortcut, () => {
+          console.log(`Shortcut ${shortcut} triggered`);
+          // Directly call the existing function for creating a new chat
+          handleNewConversation(); 
+        });
+        isRegistered = true;
+        console.log(`Shortcut ${shortcut} registered successfully.`);
+      } catch (err: unknown) {
+        // Type guard or assertion
+        if (err instanceof Error) {
+          console.error(`Failed to register shortcut ${shortcut}:`, err.message);
+        } else {
+          console.error(`Failed to register shortcut ${shortcut}:`, String(err));
+        }
+      }
+    };
+
+    registerShortcut();
+
+    // Cleanup: Unregister shortcut when component unmounts
+    return () => {
+      if (isRegistered) {
+        unregisterAll()
+          .then(() => console.log('Global shortcuts unregistered.'))
+          .catch((err: unknown) => {
+            // Type guard or assertion
+            if (err instanceof Error) {
+              console.error('Failed to unregister shortcuts:', err.message);
+            } else {
+              console.error('Failed to unregister shortcuts:', String(err));
+            }
+          });
+      }
+    };
+  }, []); // Register only once on mount
+
   return (
-    <div className="flex h-screen bg-background text-foreground">
+    <div className="relative flex h-screen bg-background text-foreground"> {/* Removed pt-10 */}
+      {/* Mock macOS buttons for inactive state */} 
+      <div className="absolute top-2 left-2 flex space-x-2 z-0"> {/* Container for mocks */} 
+        <div className="h-3 w-3 rounded-full bg-red-500"></div>
+        <div className="h-3 w-3 rounded-full bg-yellow-500"></div>
+        <div className="h-3 w-3 rounded-full bg-green-500"></div>
+      </div>
+
       {/* Sidebar */} 
-      {/* Use aside tag for semantics, keep layout classes */} 
       <aside className="w-64 border-r border-border flex flex-col flex-shrink-0">
         {/* Top Section: New Chat Button - Use p-3 for height consistency */}
-        <div className="p-3 border-b border-border">
-          <Button variant="outline" className="w-full justify-start" onClick={handleNewConversation}>
-            <Plus className="mr-2 h-4 w-4" /> New Chat
-          </Button>
+        <div data-tauri-drag-region> {/* Apply drag region to outer wrapper */} 
+          <div className="p-3 border-b border-border flex justify-end"> {/* Inner container for padding/layout */} 
+            <Button variant="outline" size="icon" onClick={handleNewConversation} title="New Chat"> {/* Use size=icon and add title */} 
+              <Plus className="h-4 w-4" /> {/* Removed mr-2 */} 
+            </Button>
+          </div>
         </div>
 
         {/* Middle Section: Conversation List - Use ScrollArea */}
         <ScrollArea 
-          className="flex-grow p-2 space-y-1"
-          thumbClassName="!bg-green-500/50"
+          className="flex-grow px-2 space-y-1"
         >
           {conversations.map(conv => (
             <Link
@@ -1090,7 +1322,11 @@ function App() {
                             handleModelChange={handleModelChange}
                             isStreaming={isStreaming}
                             handleStopGeneration={handleStopGeneration}
-                            thumbClassName="!bg-blue-500/50"
+                            handleCopy={handleCopy}
+                            handleRegenerate={handleRegenerate}
+                            copiedMessageId={copiedMessageId}
+                            isLoading={isLoading}
+                            streamingMessageId={streamingMessageId}
                         />
                     ) : (
                         <div className="flex h-full items-center justify-center text-muted-foreground p-6">

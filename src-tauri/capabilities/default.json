@@ -6,8 +6,12 @@
     "main"
   ],
   "permissions": [
+    "core:default",
+    "dialog:allow-confirm",
+    "clipboard-manager:allow-write-text",
     "opener:allow-open-url",
     "core:event:default",
-    "core:default"
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister-all"
   ]
 }

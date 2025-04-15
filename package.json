@@ -17,6 +17,7 @@
     "@radix-ui/react-slot": "^1.2.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.2.1",
+    "@tauri-apps/plugin-global-shortcut": "^2.2.0",
     "@tauri-apps/plugin-opener": "^2",
     "@types/uuid": "^10.0.0",
     "class-variance-authority": "^0.7.1",
@@ -42,6 +43,7 @@
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.16",
     "@tauri-apps/cli": "^2.4.1",
+    "@tauri-apps/plugin-clipboard-manager": "^2.2.2",
     "@types/node": "^22.14.1",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
