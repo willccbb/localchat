@@ -278,31 +278,35 @@ impl StorageManager {
 
     /// Deletes a conversation and its associated messages.
     pub async fn delete_conversation(&self, conversation_id: Uuid) -> Result<(), anyhow::Error> {
+        log::info!("[STORAGE] Deleting conversation with ID: {}", conversation_id);
         let conversation_id_text = conversation_id.to_string();
-        log::warn!("Deleting conversation with ID: {}", conversation_id_text);
 
-        // Because of `ON DELETE CASCADE` on the messages table's foreign key,
-        // deleting the conversation should automatically delete its messages.
-        let result = sqlx::query!(
+        // Execute the DELETE statement
+        log::debug!("[STORAGE] Executing DELETE FROM conversations WHERE id = {}", conversation_id_text);
+        let rows_affected = sqlx::query!(
             "DELETE FROM conversations WHERE id = ?",
             conversation_id_text
         )
         .execute(&self.pool)
         .await
-        .context("Failed to delete conversation from database")?;
+        .context("Failed to delete conversation from database")?
+        .rows_affected();
 
-        if result.rows_affected() == 0 {
-            log::warn!("Attempted to delete non-existent conversation: {}", conversation_id);
-            // Consider returning an error or just logging
+        if rows_affected == 0 {
+            log::warn!("Attempted to delete conversation {}, but it was not found.", conversation_id);
+            // Decide if not found should be an error or just a warning
+            // For idempotency, we might return Ok(()) even if not found.
+            // Err(anyhow::anyhow!("Conversation not found")) 
+        } else {
+            log::info!("[STORAGE] Successfully deleted conversation {} (rows affected: {})", conversation_id, rows_affected);
         }
 
-        log::info!("Successfully deleted conversation {}", conversation_id);
         Ok(())
     }
 
     /// Saves a single message to the database.
     pub async fn save_message(&self, message: &Message) -> Result<(), anyhow::Error> {
-        log::debug!("Saving message ID: {} to conversation: {}", message.id, message.conversation_id);
+        log::debug!("Saving message ID: {}", message.id);
         
         let id_text = message.id.to_string();
         let conversation_id_text = message.conversation_id.to_string();

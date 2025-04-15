@@ -19,14 +19,8 @@ use crate::api::LLMApiProvider;
 use crate::api::OpenAICompatibleProvider; // Import specific provider
 use std::sync::Arc;
 
-#[tauri::command]
-async fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    // Use the open_url method provided by the plugin via the trait
-    match app.opener().open_url(url.as_str(), None::<String>) {
-        Ok(_) => Ok(()),
-        Err(err) => Err(format!("Failed to open URL: {}", err.to_string())),
-    }
-}
+// Placeholder for Tauri commands exposed to frontend 
+// Removed duplicate open_url command that was here.
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -92,9 +86,9 @@ pub fn run() {
             add_model_config,
             update_model_config,
             delete_model_config,
-            open_url,
             stop_generation,
-            regenerate_last_response
+            regenerate_last_response,
+            crate::commands::open_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

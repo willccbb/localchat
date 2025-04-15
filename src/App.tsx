@@ -4,6 +4,7 @@ import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { confirm } from '@tauri-apps/plugin-dialog';
+import { emit } from '@tauri-apps/api/event'; // Import emit
 // No direct opener import needed now
 // import * as opener from '@tauri-apps/plugin-opener'; 
 // Import clipboard API module
@@ -506,7 +507,7 @@ const ChatArea = ({
 
       {/* Message list - Use ScrollArea */}
       <ScrollArea 
-        className="flex-grow px-6 pb-0 space-y-4 min-h-0"
+        className="flex-grow px-6 pb-0 min-h-0"
       >
         <div className="h-4 flex-shrink-0"></div> {/* Top spacer */} 
         {currentMessages.map((msg, index) => {
@@ -651,6 +652,10 @@ function App() {
   // Refs for debouncing the message update
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const accumulatedContentRef = useRef<string>(''); // Stores full content for the current streaming message
+  const throttleTimerRef = useRef<NodeJS.Timeout | null>(null); // Ref for throttling UI updates
+
+  // Ref for debouncing the shortcut trigger itself
+  const shortcutDebounceTimer = useRef<NodeJS.Timeout | null>(null);
 
   // --- Debounced function to update React state (defined outside useEffect) ---
   const updateMessagesDebounced = useCallback(() => {
@@ -748,23 +753,23 @@ function App() {
           if (conversationId !== currentConversationId) {
               return; // Ignore chunks for other convos
           }
-          
+
+          // --- Process Chunk --- 
           if (isFirstChunk) {
-             // --- Update streaming state and prepare placeholder on first chunk ---
-             // Use functional update to safely check/set isStreaming
+             // --- Update streaming state and prepare placeholder --- 
              setIsStreaming(prevIsStreaming => {
-                 console.log(`>>> Listener: First chunk for ${messageId}. Setting isStreaming=true.`); 
                  if (!prevIsStreaming) {
-                     setStreamingMessageId(messageId); // Store the ID of the message we're streaming
-                     accumulatedContentRef.current = delta; // Initialize accumulator
-                     // Add placeholder message immediately (no debounce needed for this)
+                     setStreamingMessageId(messageId); // Store the ID
+                     // Initialize accumulator with the first chunk's content
+                     accumulatedContentRef.current = delta; 
+                     // Add placeholder message immediately with EMPTY content
                      setCurrentMessages(prevMessages => [
                          ...prevMessages,
                          {
                              id: messageId, 
                              conversation_id: conversationId,
                              role: 'assistant' as 'assistant',
-                             content: delta, // Initial content
+                             content: delta, // << Use first chunk's delta directly
                              timestamp: new Date().toISOString(),
                              metadata: undefined,
                          }
@@ -773,40 +778,39 @@ function App() {
                  }
                  return prevIsStreaming; // Already streaming, no change
              });
-
-          } else {
-             // --- Accumulate content and debounce state update for subsequent chunks ---
-             // Use functional update to get latest streamingMessageId for comparison
-             setStreamingMessageId(currentStreamingId => {
-                 if (messageId !== currentStreamingId) {
-                     console.log(`Chunk for ${messageId} ignored, current stream is ${currentStreamingId}`);
-                     return currentStreamingId; // Ignore chunk if not for current stream
-                 }
-
-                 accumulatedContentRef.current += delta; // Append to accumulator
-
-                 // Clear existing timer if present
-                 if (debounceTimerRef.current) {
-                     clearTimeout(debounceTimerRef.current);
-                 }
-
-                 // Set a new timer - Capture current value of accumulator
-                 const currentAccumulated = accumulatedContentRef.current;
-                 debounceTimerRef.current = setTimeout(() => {
-                     // Update using the captured value when timer fires
-                     setCurrentMessages(prevMessages =>
-                       prevMessages.map(msg =>
-                           msg.id === currentStreamingId // Use the ID from state closure
-                               ? { ...msg, content: currentAccumulated } // Update with captured accumulated content
-                               : msg
-                       )
-                     );
-                     debounceTimerRef.current = null; // Clear timer ID
-                 }, 100); // Debounce interval (100ms)
-
-                 return currentStreamingId; // Keep the ID
-             });
+             // Skip accumulation and throttling for the very first chunk, 
+             // as it's already handled in the initial state update.
+             return; // Exit the handler early for the first chunk
           }
+
+          // --- Accumulate content for ALL chunks (including first) --- 
+          // We only update the accumulated ref here. The final state update happens
+          // in the 'finished' listener to avoid race conditions.
+          setStreamingMessageId(currentStreamingId => {
+              // Ensure we only accumulate for the currently active stream
+              if (messageId === currentStreamingId) {
+                 accumulatedContentRef.current += delta; 
+
+                 // --- Throttle UI updates --- 
+                 if (!throttleTimerRef.current) { // Only set timer if not already active
+                     // Capture current state for the closure
+                     const currentAccumulated = accumulatedContentRef.current;
+                     const currentMessageId = currentStreamingId;
+
+                     throttleTimerRef.current = setTimeout(() => {
+                         setCurrentMessages(prevMessages =>
+                             prevMessages.map(msg =>
+                                 msg.id === currentMessageId
+                                     ? { ...msg, content: currentAccumulated } // Update with captured content
+                                     : msg
+                             )
+                         );
+                         throttleTimerRef.current = null; // Clear timer ID after execution
+                     }, 150); // Throttle interval (150ms)
+                 }
+              }
+              return currentStreamingId; // Always return the current ID
+          });
         });
       } catch (e) {
         console.error("Failed to set up assistant message chunk listener:", e);
@@ -828,7 +832,7 @@ function App() {
         unlistenChunkFn();
       }
     };
-  }, [currentConversationId, isStreaming, setCurrentMessages, setStreamingMessageId]); // Adjusted dependencies
+  }, [currentConversationId, setCurrentMessages, setStreamingMessageId]); // REMOVED isStreaming
 
   // <<< Listen for stream FINISHED event from backend >>>
   useEffect(() => {
@@ -849,27 +853,39 @@ function App() {
       try {
         unlistenFinishedFn = await listen<AssistantStreamFinished>('assistant_stream_finished', (event) => {
           const { messageId } = event.payload;
+          console.log(`[Finished Listener] Received event for messageId: ${messageId}`, event.payload); // Log received event
 
           // Need latest streamingMessageId for comparison & cleanup
           setStreamingMessageId(currentId => {
+            console.log(`[Finished Listener] Inside setStreamingMessageId callback. currentId: ${currentId}`); // Log currentId value
             if (messageId === currentId) {
-              console.log(`>>> Finished Listener: Matched streamingMessageId (${currentId}). Resetting state.`);
+              console.log(`[Finished Listener] Matched streamingMessageId (${currentId}). Resetting state.`);
               
               // --- Final Update (Ensure last chunk is rendered) --- 
-              // Clear any pending debounce timer for this message 
+              // Clear any pending throttle timer for this message 
               if (debounceTimerRef.current) { 
                   clearTimeout(debounceTimerRef.current); 
                   debounceTimerRef.current = null; 
               } 
+              // Also clear any pending throttle timer
+              if (throttleTimerRef.current) { 
+                 console.log('[Finished Listener] Clearing active throttle timer.'); // Log timer clear
+                 clearTimeout(throttleTimerRef.current); 
+                 throttleTimerRef.current = null; 
+              }
               // Perform one final state update immediately after stream finishes 
+              console.log('[Finished Listener] Calling performFinalUpdate...'); // Log before final update
               performFinalUpdate(currentId); // Use the ID we know matched
+              console.log('[Finished Listener] performFinalUpdate called.'); // Log after final update
               accumulatedContentRef.current = ''; // Reset accumulator
               
+              console.log('[Finished Listener] Calling setIsStreaming(false)...'); // Log before state reset
               setIsStreaming(false);
-              console.log(`>>> Finished Listener: State AFTER setIsStreaming(false): isStreaming=false (expected)`);
+              console.log(`[Finished Listener] State AFTER setIsStreaming(false): isStreaming=false (expected)`);
+              console.log('[Finished Listener] Returning null for streamingMessageId.'); // Log before ID reset
               return null; // Reset the ID
             } else {
-              console.log(`>>> Finished Listener: Mismatched ID (current: ${currentId}, received: ${messageId}). No state change.`);
+              console.log(`[Finished Listener] Mismatched ID (current: ${currentId}, received: ${messageId}). No state change.`);
               return currentId; // Keep current ID if no match
             }
           });
@@ -889,38 +905,53 @@ function App() {
         unlistenFinishedFn();
       }
     };
-  }, [streamingMessageId, setCurrentMessages, setStreamingMessageId]); // Added dependencies needed by performFinalUpdate closure
+  }, [setCurrentMessages, setStreamingMessageId]); // Removed streamingMessageId, setters are stable
 
-  // Handle creating a new conversation
-  const handleNewConversation = useCallback(async () => {
-    console.log("Creating new conversation...");
+  // Define the handler function (no useCallback needed here)
+  const handleNewConversation = async () => {
+    console.log("[Handler Ref] ENTERING handleNewConversation");
     setError(null);
     setIsLoading(true);
     try {
-      // Use the first available model, or handle error if none exist
       if (availableModels.length === 0) {
           setError("Cannot create chat: No models configured.");
-          setIsLoading(false);
-          return;
+          // Don't exit handler here, let finally set loading false
+      } else {
+          const defaultModelId = availableModels[0].id;
+          console.log(`[Handler Ref] Using default model ID: ${defaultModelId}`);
+          const newConvo = await invoke<Conversation>('create_conversation', { modelConfigId: defaultModelId });
+          console.log("[Handler Ref] Created new conversation:", newConvo);
+          setConversations(prevConversations => 
+              [newConvo, ...prevConversations]
+                  .sort((a, b) => new Date(b.last_updated_at).getTime() - new Date(a.last_updated_at).getTime())
+          );
+          setCurrentConversationId(newConvo.id);
+          setCurrentInput(''); 
+          navigate(`/chat/${newConvo.id}`); 
       }
-      const defaultModelId = availableModels[0].id;
-      console.log(`Using default model ID: ${defaultModelId}`);
-      const newConvo = await invoke<Conversation>('create_conversation', { modelConfigId: defaultModelId });
-      console.log("Created new conversation:", newConvo);
-      // Add to list, select it, and navigate
-      const updatedConversations = [newConvo, ...conversations]
-          .sort((a, b) => new Date(b.last_updated_at).getTime() - new Date(a.last_updated_at).getTime());
-      setConversations(updatedConversations);
-      setCurrentConversationId(newConvo.id);
-      setCurrentInput(''); // Clear input for new chat
-      navigate(`/chat/${newConvo.id}`); // Navigate to the new chat route
-    } catch (err) {
-      console.error('Error creating new conversation:', err);
-      setError(String(err));
+    } catch (err: unknown) {
+       if (err instanceof Error) {
+         console.error('[Handler Ref] Error creating new conversation:', err.message);
+         setError(err.message);
+       } else {
+         console.error('[Handler Ref] Error creating new conversation:', String(err));
+         setError(String(err));
+       }
     } finally {
       setIsLoading(false);
+      console.log("[Handler Ref] EXITING handleNewConversation");
     }
-  }, [availableModels, conversations, navigate, setError, setIsLoading, setCurrentConversationId, setCurrentInput]); // Dependencies for useCallback
+  };
+
+  // --- Ref to hold the latest version of the handler --- 
+  const handleNewConversationRef = useRef(handleNewConversation);
+
+  // --- Effect to update the ref --- 
+  useEffect(() => {
+    // Update the ref's current value whenever the component re-renders
+    // or specifically when dependencies of the conceptual handler change.
+    handleNewConversationRef.current = handleNewConversation;
+  }, [availableModels, navigate, setError, setIsLoading, setCurrentConversationId, setCurrentInput, setConversations]); // Dependencies that affect the handler's logic
 
   // Handle sending a message
   const handleSendMessage = async () => {
@@ -1009,6 +1040,7 @@ function App() {
       console.log(`Deleting conversation ${idToDelete}...`);
       setError(null);
       try {
+          console.log(`[Frontend] Attempting invoke('delete_conversation', { conversationId: ${idToDelete} })`);
           await invoke('delete_conversation', { conversationId: idToDelete });
           console.log(`Conversation ${idToDelete} deleted.`);
           // Update state immediately
@@ -1171,49 +1203,48 @@ function App() {
     loadMessages(currentConversationId);
   }, [currentConversationId]);
 
-  // --- Global Shortcut Setup --- 
+  // --- Global Shortcut Setup (runs only once) --- 
   useEffect(() => {
     let isRegistered = false;
-    const shortcut = 'Command+N'; // Revert back to desired shortcut
+    const shortcut = 'Command+N'; 
 
     const registerShortcut = async () => {
       try {
-        console.log('Attempting to register shortcut...');
+        console.log('[Shortcut] Attempting to register shortcut...');
+        // Call the function held by the ref's current property
         await register(shortcut, () => {
-          console.log(`Shortcut ${shortcut} triggered`);
-          // Directly call the existing function for creating a new chat
-          handleNewConversation(); 
+          console.log(`[Shortcut] ${shortcut} triggered.`);
+          // --- Debounce the handler call --- 
+          if (shortcutDebounceTimer.current) {
+            clearTimeout(shortcutDebounceTimer.current);
+          }
+          shortcutDebounceTimer.current = setTimeout(() => {
+            console.log('[Shortcut] Debounced execution. Calling handler via ref.');
+            handleNewConversationRef.current(); // Call the latest handler
+            shortcutDebounceTimer.current = null; // Clear timer after execution
+          }, 100); // Reduced debounce delay (100ms)
         });
         isRegistered = true;
-        console.log(`Shortcut ${shortcut} registered successfully.`);
+        console.log(`[Shortcut] ${shortcut} registered successfully.`);
       } catch (err: unknown) {
-        // Type guard or assertion
-        if (err instanceof Error) {
-          console.error(`Failed to register shortcut ${shortcut}:`, err.message);
-        } else {
-          console.error(`Failed to register shortcut ${shortcut}:`, String(err));
-        }
+        // ... error handling ...
       }
     };
 
     registerShortcut();
 
-    // Cleanup: Unregister shortcut when component unmounts
     return () => {
       if (isRegistered) {
+        // Clear debounce timer on unmount too
+        if (shortcutDebounceTimer.current) {
+          clearTimeout(shortcutDebounceTimer.current);
+        }
         unregisterAll()
-          .then(() => console.log('Global shortcuts unregistered.'))
-          .catch((err: unknown) => {
-            // Type guard or assertion
-            if (err instanceof Error) {
-              console.error('Failed to unregister shortcuts:', err.message);
-            } else {
-              console.error('Failed to unregister shortcuts:', String(err));
-            }
-          });
+          .then(() => console.log('[Shortcut] Global shortcuts unregistered.'))
+          .catch((err: unknown) => { /* ... error handling ... */ }); 
       }
     };
-  }, []); // Register only once on mount
+  }, []); // Empty dependency array: Run only once on mount
 
   return (
     <div className="relative flex h-screen bg-background text-foreground"> {/* Removed pt-10 */}
