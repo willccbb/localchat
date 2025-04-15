@@ -13,6 +13,7 @@ use std::sync::Arc; // To hold the API provider
 use tauri::Emitter; // For app_handle.emit
 use futures::StreamExt; // Added for stream processing
 use tauri_plugin_opener::OpenerExt; // <<< ADD THIS IMPORT >>>
+use tauri_plugin_dialog::DialogExt; // Needed for AppHandle dialog method
 
 // Tauri command to list all conversations
 #[tauri::command]
@@ -647,6 +648,143 @@ pub async fn regenerate_last_response(
     });
 
     Ok(())
+}
+
+// Tauri command to generate a title for a conversation (runs in background)
+#[tauri::command]
+pub async fn generate_conversation_title(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+    conversation_id: String, 
+    utility_model_config_id: String,
+) -> Result<(), String> {
+    log::info!(
+        "Received request to generate title for conv: {} using model: {}",
+        conversation_id,
+        utility_model_config_id
+    );
+
+    // Parse IDs
+    let Ok(conv_uuid) = Uuid::parse_str(&conversation_id) else {
+        return Err(format!("Invalid conversation ID format: {}", conversation_id));
+    };
+    let Ok(util_model_uuid) = Uuid::parse_str(&utility_model_config_id) else {
+        return Err(format!("Invalid utility model ID format: {}", utility_model_config_id));
+    };
+
+    // Clone necessary state parts for the background task
+    let app_state_clone = state.inner().clone();
+    let handle_clone = app_handle.clone();
+
+    // Spawn the actual generation logic in a separate task
+    tauri::async_runtime::spawn(async move {
+        log::info!("[Title Gen BG Task {}] Started", conversation_id);
+        
+        // --- Get Messages (Prompt + Response) --- 
+        let messages = {
+            let storage = app_state_clone.storage.lock().await;
+            match storage.get_conversation_messages(conv_uuid).await {
+                Ok(msgs) => msgs,
+                Err(e) => {
+                    log::error!("[Title Gen BG Task {}] Failed to get messages: {:?}", conversation_id, e);
+                    return; // Cannot proceed without messages
+                }
+            }
+        };
+
+        // We expect exactly two messages (user prompt, assistant response)
+        if messages.len() < 2 {
+            log::warn!("[Title Gen BG Task {}] Expected >= 2 messages, found {}. Skipping title generation.", conversation_id, messages.len());
+            return;
+        }
+        let user_prompt = &messages[0];
+        let assistant_response = &messages[1]; // Assuming the first two are user/assistant
+
+        // Truncate content (simple character limit for now)
+        const MAX_CHARS: usize = 1000;
+        let truncated_prompt = user_prompt.content.chars().take(MAX_CHARS).collect::<String>();
+        let truncated_response = assistant_response.content.chars().take(MAX_CHARS).collect::<String>();
+        
+        // --- Get Utility Model Config and API Key --- 
+        let utility_model_config = {
+            let storage = app_state_clone.storage.lock().await;
+            match get_model_config(&storage, util_model_uuid).await {
+                Ok(mc) => mc,
+                Err(e) => {
+                    log::error!("[Title Gen BG Task {}] Failed to get utility model config ({}): {}", conversation_id, util_model_uuid, e);
+                    return;
+                }
+            }
+        };
+
+        let api_key = match config::get_api_key(&utility_model_config) {
+            Ok(key) => key,
+            Err(e) => {
+                 log::error!("[Title Gen BG Task {}] Failed to get API key for utility model: {:?}", conversation_id, e);
+                 return;
+            }
+        };
+
+        // --- Construct Prompt for Title Generation --- 
+        let title_gen_system_prompt = "You are an expert conversation summarizer. Generate a concise, relevant title for the following conversation exchange. The title must be lowercase except for proper nouns, maximum 30 characters long, and contain only the title itself with no extra text or quotes.".to_string();
+        let title_gen_user_prompt = format!(
+            "User: {}\nAssistant: {}\n\nTitle:",
+            truncated_prompt,
+            truncated_response
+        );
+
+        let title_gen_messages = vec![
+            Message { // System Prompt
+                id: Uuid::nil(), conversation_id: conv_uuid, role: "system".to_string(),
+                content: title_gen_system_prompt, timestamp: Utc::now(), metadata: None, 
+            },
+            Message { // User Prompt containing the exchange
+                 id: Uuid::nil(), conversation_id: conv_uuid, role: "user".to_string(),
+                 content: title_gen_user_prompt, timestamp: Utc::now(), metadata: None,
+            },
+        ];
+
+        // --- Call Utility Model (Non-Streaming) --- 
+        let api_provider = app_state_clone.api_provider.clone();
+        match api_provider.send_chat_request(&utility_model_config, &api_key, &title_gen_messages).await {
+            Ok(generated_title_raw) => {
+                // --- Sanitize and Update Title --- 
+                let generated_title = generated_title_raw.trim().trim_matches('"'); // Remove whitespace and quotes
+                log::info!("[Title Gen BG Task {}] Raw generated title: '{}'", conversation_id, generated_title_raw);
+                log::info!("[Title Gen BG Task {}] Sanitized generated title: '{}'", conversation_id, generated_title);
+                
+                // Basic validation (length)
+                if generated_title.is_empty() || generated_title.len() > 30 {
+                    log::warn!("[Title Gen BG Task {}] Generated title invalid (empty or too long). Length: {}. Keeping default.", conversation_id, generated_title.len());
+                    return;
+                }
+
+                // Rename the conversation in storage
+                {
+                    let storage = app_state_clone.storage.lock().await;
+                    match storage.rename_conversation(conv_uuid, generated_title.to_string()).await {
+                        Ok(_) => {
+                            log::info!("[Title Gen BG Task {}] Successfully renamed conversation to '{}'", conversation_id, generated_title);
+                            // --- Emit update event --- 
+                             if let Err(e) = handle_clone.emit("conversation_updated", serde_json::json!({ "conversationId": conversation_id })) {
+                                 log::error!("[Title Gen BG Task {}] Failed to emit conversation_updated event: {:?}", conversation_id, e);
+                             }
+                        }
+                        Err(e) => {
+                            log::error!("[Title Gen BG Task {}] Failed to rename conversation in storage: {:?}", conversation_id, e);
+                        }
+                    }
+                } // Release storage lock
+                
+            }
+            Err(e) => {
+                 log::error!("[Title Gen BG Task {}] Utility model API call failed: {:?}", conversation_id, e);
+            }
+        }
+        log::info!("[Title Gen BG Task {}] Finished", conversation_id);
+    }); // End of background task spawn
+
+    Ok(()) // Return immediately, task runs in background
 }
 
 // Add other commands later (create_conversation, get_messages, etc.) 

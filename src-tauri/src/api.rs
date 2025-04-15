@@ -20,6 +20,14 @@ pub trait LLMApiProvider: Send + Sync {
         api_key: &str,
         messages: &[Message], // Use internal Message struct
     ) -> Result<DeltaStream>; 
+
+    // Returns the full response content as a single string.
+    async fn send_chat_request(
+        &self,
+        config: &ModelConfig,
+        api_key: &str,
+        messages: &[Message],
+    ) -> Result<String>;
 }
 
 // --- OpenAI Compatible Provider Implementation ---
@@ -62,6 +70,33 @@ struct OpenAIStreamDelta {
     // Content is the important part
     content: Option<String>,
 }
+
+// Standard non-streaming response format
+#[derive(Deserialize, Debug)]
+struct OpenAIResponse {
+    id: String,
+    object: String,
+    created: i64,
+    model: String,
+    choices: Vec<OpenAIChoice>,
+    // usage: Option<OpenAIUsage>,
+}
+
+#[derive(Deserialize, Debug)]
+struct OpenAIChoice {
+    index: u32,
+    message: OpenAIMessage, // Contains role and content
+    finish_reason: String,
+}
+
+/* Optional Usage struct 
+#[derive(Deserialize, Debug)]
+struct OpenAIUsage {
+    prompt_tokens: u32,
+    completion_tokens: u32,
+    total_tokens: u32,
+}
+*/
 
 pub struct OpenAICompatibleProvider {
     client: Client, 
@@ -183,5 +218,57 @@ impl LLMApiProvider for OpenAICompatibleProvider {
 
         // Box the stream
         Ok(Box::pin(delta_stream))
+    }
+
+    // Implement the new send_chat_request method
+    async fn send_chat_request(
+        &self,
+        config: &ModelConfig,
+        api_key: &str,
+        messages: &[Message],
+    ) -> Result<String> {
+        let model_name = self.get_model_name(config)?;
+        log::info!("Sending NON-STREAM request to OpenAI compatible API: {} using model: {}", config.api_url, model_name);
+
+        let api_messages: Vec<OpenAIMessage> = messages
+            .iter()
+            .map(|msg| OpenAIMessage {
+                role: msg.role.clone(),
+                content: msg.content.clone(),
+            })
+            .collect();
+
+        let request_body = OpenAIRequestBody {
+            model: model_name,
+            messages: api_messages,
+            stream: false, // <<< Ensure streaming is false >>>
+        };
+
+        let request_url = format!("{}/chat/completions", config.api_url.trim_end_matches('/'));
+
+        let response = self.client
+            .post(&request_url)
+            .bearer_auth(api_key)
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to send non-stream request to OpenAI API")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_else(|_| "<Failed to read error body>".to_string());
+            log::error!("OpenAI API non-stream request failed with status {}: {}", status, error_body);
+            return Err(anyhow::anyhow!("API non-stream request failed with status {}: {}", status, error_body));
+        }
+
+        // Parse the response and extract the content
+        let response_body = response.json::<OpenAIResponse>().await
+            .context("Failed to parse OpenAI non-stream response body")?;
+        
+        // Extract content from the first choice's message
+        response_body.choices
+            .get(0)
+            .map(|choice| choice.message.content.clone())
+            .context("No message content found in OpenAI non-stream response")
     }
 } 

@@ -41,6 +41,8 @@ import { Square, Edit2, X, Loader2, RefreshCw, CircleHelp } from "lucide-react";
 import { v4 as uuidv4 } from 'uuid'; // For generating temporary IDs
 import { Components } from 'react-markdown'; // Import Components type
 import { register, unregisterAll } from '@tauri-apps/plugin-global-shortcut'; // Use plugin-specific path
+// Create a store instance (use '.settings.dat' for the filename)
+import { LazyStore } from '@tauri-apps/plugin-store'; // <<< RE-ADD IMPORT >>>
 
 // Import Select types explicitly
 import type { 
@@ -84,10 +86,21 @@ interface ModelConfig {
 // Define props for SettingsPage
 interface SettingsPageProps {
   onModelsChanged: () => Promise<void>; // Callback to refresh models in parent
+  availableModels: ModelConfig[]; // <<< ADD availableModels >>>
+  utilityModelConfigId: string | null; // <<< ADD utilityModelConfigId >>>
+  setUtilityModelConfigId: (id: string | null) => void; // <<< ADD setter >>>
 }
 
+// Use LazyStore for instantiation
+const settingsStore = new LazyStore('.settings.dat'); 
+
 // Settings Page Component accepting props
-const SettingsPage = ({ onModelsChanged }: SettingsPageProps) => {
+const SettingsPage = ({ 
+  onModelsChanged, 
+  availableModels, 
+  utilityModelConfigId, 
+  setUtilityModelConfigId 
+}: SettingsPageProps) => {
   const [modelConfigs, setModelConfigs] = useState<ModelConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,25 +128,19 @@ const SettingsPage = ({ onModelsChanged }: SettingsPageProps) => {
       }
   };
 
-  // Fetch model configs on mount
+  // Fetch model configs on mount (now uses availableModels from props)
   useEffect(() => {
+    // Use the models passed down from App
+    setModelConfigs(availableModels);
+    setIsLoading(false);
+    // No need to fetch here anymore
+    /*
     async function loadModelConfigs() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        console.log('Invoking list_model_configs...');
-        const fetchedConfigs = await invoke<ModelConfig[]>('list_model_configs');
-        console.log('Fetched model configs:', fetchedConfigs);
-        setModelConfigs(fetchedConfigs);
-      } catch (err) {
-        console.error('Error fetching model configs:', err);
-        setError(String(err));
-      } finally {
-        setIsLoading(false);
-      }
+      // ... (old fetching logic)
     }
     loadModelConfigs();
-  }, []);
+    */
+  }, [availableModels]); // Depend on availableModels prop
 
   // Reset form fields to default/empty state
   const resetForm = () => {
@@ -264,6 +271,19 @@ const SettingsPage = ({ onModelsChanged }: SettingsPageProps) => {
     }
   };
 
+  // Handle changing the utility model (use async/await with LazyStore instance)
+  const handleUtilityModelChange = async (newModelId: string) => {
+    setUtilityModelConfigId(newModelId);
+    console.log('Utility model selection changed to:', newModelId);
+    try {
+      await settingsStore.set('utilityModelConfigId', newModelId);
+      await settingsStore.save(); // Save after setting
+      console.log('Saved utility model setting successfully.');
+    } catch (err: unknown) {
+      console.error("Failed to save utility model setting:", err);
+    }
+  };
+
   return (
     // Make the OUTERMOST element the ScrollArea
     <ScrollArea 
@@ -272,7 +292,7 @@ const SettingsPage = ({ onModelsChanged }: SettingsPageProps) => {
       )}
     >
       {/* Place all content directly inside ScrollArea */}
-      <h1 className="text-2xl font-semibold mb-6">Settings</h1> {/* REMOVED flex-shrink-0 */} 
+      <h1 className="text-2xl font-semibold mb-6">Settings</h1> {/* REMOVED flex-shrink-0 */}
 
       {error && (
         <div className="text-red-600 bg-red-100 p-3 rounded-md mb-6"> {/* REMOVED flex-shrink-0 */} 
@@ -282,6 +302,36 @@ const SettingsPage = ({ onModelsChanged }: SettingsPageProps) => {
 
       {/* Original Content wrapper - NO LONGER needs ScrollArea */}
       <div className="space-y-6">
+
+         {/* --- Utility Model Selector Card --- */}
+         <Card>
+           <CardHeader>
+             <CardTitle>Utility Model</CardTitle>
+           </CardHeader>
+           <CardContent>
+              <Label htmlFor="utility-model-select" className="mb-2 block">Select model for background tasks (e.g., Naming)</Label>
+              <Select 
+                value={utilityModelConfigId ?? ''} // Use empty string if null
+                onValueChange={handleUtilityModelChange}
+              >
+                <SelectTrigger id="utility-model-select" className="w-full">
+                  <SelectValue placeholder="Select a model..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableModels.length === 0 ? (
+                     <SelectItem value="none" disabled>No models available</SelectItem>
+                  ) : (
+                    availableModels.map(model => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+           </CardContent>
+         </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Model Configurations</CardTitle>
@@ -648,12 +698,36 @@ function App() {
   // State for streaming status
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [utilityModelConfigId, setUtilityModelConfigId] = useState<string | null>(null);
 
   // Refs for debouncing the message update
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const accumulatedContentRef = useRef<string>(''); // Stores full content for the current streaming message
   const throttleTimerRef = useRef<NodeJS.Timeout | null>(null); // Ref for throttling UI updates
 
+  // --- Refs to access latest state in callbacks ---
+  const currentConversationIdRef = useRef<string | null>(currentConversationId);
+  const conversationsRef = useRef<Conversation[]>(conversations);
+  const currentMessagesRef = useRef<Message[]>(currentMessages);
+  const utilityModelConfigIdRef = useRef<string | null>(utilityModelConfigId); // <<< ADD REF >>>
+
+  // --- Effects to keep refs updated ---
+  useEffect(() => {
+    currentConversationIdRef.current = currentConversationId;
+  }, [currentConversationId]);
+
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  useEffect(() => {
+    currentMessagesRef.current = currentMessages;
+  }, [currentMessages]);
+
+  useEffect(() => {
+    utilityModelConfigIdRef.current = utilityModelConfigId;
+  }, [utilityModelConfigId]); // <<< ADD EFFECT >>>
+  
   // Ref for debouncing the shortcut trigger itself
   const shortcutDebounceTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -736,8 +810,24 @@ function App() {
 
   // Effect to load initial data (conversations and models)
   useEffect(() => {
+    const loadInitialSettings = async () => {
+        try {
+            const value = await settingsStore.get<string | null>('utilityModelConfigId');
+            if (value) {
+                console.log('Loaded utility model ID:', value);
+                setUtilityModelConfigId(value);
+            } else {
+                console.log('No utility model ID found in store.');
+            }
+        } catch (err: unknown) {
+            console.error('Failed to load utility model setting:', err);
+        }
+    };
+
     loadModels(); 
     loadConversations(); 
+    loadInitialSettings(); // Call async function to load settings
+
   }, []); // Run only once on mount
 
   // Listen for STREAMING chunks from the backend
@@ -855,25 +945,30 @@ function App() {
           const { messageId } = event.payload;
           console.log(`[Finished Listener] Received event for messageId: ${messageId}`, event.payload); // Log received event
 
+          // === Declare CAPTURE variables in the outer scope ===
+          let capturedConversationId: string | null = null;
+          let capturedTitle: string | undefined = undefined;
+          let capturedMessagesLength = 0;
+
           // Need latest streamingMessageId for comparison & cleanup
           setStreamingMessageId(currentId => {
             console.log(`[Finished Listener] Inside setStreamingMessageId callback. currentId: ${currentId}`); // Log currentId value
+
             if (messageId === currentId) {
               console.log(`[Finished Listener] Matched streamingMessageId (${currentId}). Resetting state.`);
               
-              // --- Final Update (Ensure last chunk is rendered) --- 
-              // Clear any pending throttle timer for this message 
-              if (debounceTimerRef.current) { 
-                  clearTimeout(debounceTimerRef.current); 
-                  debounceTimerRef.current = null; 
-              } 
-              // Also clear any pending throttle timer
+              // Capture necessary info for title gen check (using REFs for latest state)
+              capturedConversationId = currentConversationIdRef.current; 
+              const currentConvo = conversationsRef.current.find(c => c.id === capturedConversationId);
+              capturedTitle = currentConvo?.title;
+              capturedMessagesLength = currentMessagesRef.current.length;
+
+              // --- State Reset and Cleanup Logic --- 
+              console.log('[Finished Listener] Clearing active throttle timer.'); // Log timer clear
               if (throttleTimerRef.current) { 
-                 console.log('[Finished Listener] Clearing active throttle timer.'); // Log timer clear
                  clearTimeout(throttleTimerRef.current); 
                  throttleTimerRef.current = null; 
               }
-              // Perform one final state update immediately after stream finishes 
               console.log('[Finished Listener] Calling performFinalUpdate...'); // Log before final update
               performFinalUpdate(currentId); // Use the ID we know matched
               console.log('[Finished Listener] performFinalUpdate called.'); // Log after final update
@@ -889,6 +984,34 @@ function App() {
               return currentId; // Keep current ID if no match
             }
           });
+
+          // <<< Trigger Title Generation AFTER state updates (using CAPTURED values & REF) >>>
+          setTimeout(() => {
+             // Use the values captured *before* state was reset inside the listener 
+             if (capturedConversationId) { 
+                // Read utility model ID from ref for latest value
+                const currentUtilModelId = utilityModelConfigIdRef.current; 
+                console.log(`[Title Trigger Check] Captured Convo ID: ${capturedConversationId}, Title: ${capturedTitle}, Msgs: ${capturedMessagesLength}, Util Model ID: ${currentUtilModelId}`);
+
+                if (
+                    capturedTitle === "New Chat" && 
+                    capturedMessagesLength >= 2 && // Check >= 2 messages
+                    currentUtilModelId // <<< READ FROM REF >>>
+                ) {
+                    console.log(`[Title Trigger] Invoking generate_conversation_title for ${capturedConversationId}`);
+                    invoke('generate_conversation_title', { 
+                        conversationId: capturedConversationId,
+                        utilityModelConfigId: currentUtilModelId // <<< PASS VALUE FROM REF >>>
+                    })
+                    .then(() => console.log(`[Title Trigger] generate_conversation_title invoked successfully for ${capturedConversationId}`))
+                    .catch((err: unknown) => console.error(`[Title Trigger] Error invoking generate_conversation_title for ${capturedConversationId}:`, err));
+                } else {
+                    console.log("[Title Trigger] Conditions not met for title generation based on captured state.");
+                }
+            } else {
+                 console.log("[Title Trigger] Captured conversation ID is null, skipping title generation check (likely ID mismatch earlier).");
+             }
+          }, 0); // Use setTimeout with 0 delay
         });
       } catch (e) {
         console.error("Failed to set up assistant finished listener:", e);
@@ -906,6 +1029,41 @@ function App() {
       }
     };
   }, [setCurrentMessages, setStreamingMessageId]); // Removed streamingMessageId, setters are stable
+
+  // <<< Listen for CONVERSATION UPDATED event from backend (e.g., after title gen) >>>
+  useEffect(() => {
+    let unlistenUpdateFn: (() => void) | null = null;
+    interface ConversationUpdatePayload {
+      conversationId: string;
+    }
+
+    async function setupConversationUpdateListener() {
+      try {
+        unlistenUpdateFn = await listen<ConversationUpdatePayload>('conversation_updated', (event) => {
+          const { conversationId: updatedId } = event.payload;
+          console.log(`[Conversation Update Listener] Received update event for ID: ${updatedId}`);
+          // If the updated conversation is the currently selected one OR
+          // if no conversation is selected (to refresh the list generally)
+          // we reload the conversation list.
+          if (updatedId === currentConversationId || currentConversationId === null) {
+            console.log(`[Conversation Update Listener] Reloading conversations due to update for relevant ID: ${updatedId}`);
+            loadConversations(); // Reload the list from the backend
+          }
+        });
+      } catch (e) {
+        console.error("Failed to set up conversation updated listener:", e);
+      }
+    }
+
+    setupConversationUpdateListener();
+
+    return () => {
+      console.log('Cleaning up conversation updated listener');
+      if (unlistenUpdateFn) {
+        unlistenUpdateFn();
+      }
+    };
+  }, [currentConversationId, loadConversations]); // Depend on current ID and the reload function
 
   // Define the handler function (no useCallback needed here)
   const handleNewConversation = async () => {
@@ -1366,7 +1524,12 @@ function App() {
                     )
                 } />
                 <Route path="/settings" element={
-                    <SettingsPage onModelsChanged={handleModelsChanged} />
+                    <SettingsPage 
+                        onModelsChanged={handleModelsChanged} 
+                        availableModels={availableModels}
+                        utilityModelConfigId={utilityModelConfigId}
+                        setUtilityModelConfigId={setUtilityModelConfigId}
+                    />
                 } />
                 <Route path="*" element={
                     <div className="flex h-full items-center justify-center text-muted-foreground p-6">

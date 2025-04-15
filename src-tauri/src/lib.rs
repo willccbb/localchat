@@ -73,6 +73,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_store::Builder::default().build())
         // Register the command(s) with the handler
         .invoke_handler(tauri::generate_handler![
             list_conversations,
@@ -88,7 +89,8 @@ pub fn run() {
             delete_model_config,
             stop_generation,
             regenerate_last_response,
-            crate::commands::open_url
+            crate::commands::open_url,
+            crate::commands::generate_conversation_title
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
