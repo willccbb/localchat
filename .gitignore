@@ -20,9 +20,6 @@ dist-ssr
 # /src-tauri/target/debug/
 # /src-tauri/target/release/
 
-# SQLx offline data
-src-tauri/.sqlx
-
 # Rust temporary files
 *.rs.bk
 

@@ -434,7 +434,6 @@ const ChatArea = ({
   handleRegenerate,
   copiedMessageId,
   isLoading,
-  streamingMessageId,
 }: { 
   currentMessages: Message[], 
   currentInput: string, 
@@ -448,7 +447,6 @@ const ChatArea = ({
   handleRegenerate: () => Promise<void>,
   copiedMessageId: string | null,
   isLoading: boolean,
-  streamingMessageId: string | null | undefined,
 }) => {
   // console.log('ChatArea received:', { isCurrentConversationStreaming }); // REMOVE LOG
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -546,8 +544,6 @@ const ChatArea = ({
         <div className="h-4 flex-shrink-0"></div> {/* Top spacer */} 
         {currentMessages.map((msg, index) => {
           const displayContent = msg.content; 
-          // <<< Check if THIS message is the one currently streaming >>>
-          const isThisMessageStreaming = msg.id === streamingMessageId;
 
           return (
            <div 
@@ -1468,7 +1464,6 @@ function App() {
                             handleRegenerate={handleRegenerate}
                             copiedMessageId={copiedMessageId}
                             isLoading={!!streamingStatus[currentConversation?.id ?? '']}
-                            streamingMessageId={streamingMessagesRef.current[currentConversation?.id ?? '']}
                         />
                     ) : (
                         <div className="flex h-full items-center justify-center text-muted-foreground p-6">
