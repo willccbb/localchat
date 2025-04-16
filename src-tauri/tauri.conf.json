@@ -22,7 +22,10 @@
         "title": "localchat",
         "width": 1000,
         "height": 700,
-        "decorations": true
+        "decorations": true,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "dragDropEnabled": false
       }
     ]
   },

@@ -4,6 +4,7 @@ import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { confirm } from '@tauri-apps/plugin-dialog';
+import { Window } from '@tauri-apps/api/window'; // <<< Import Window
 // import { emit } from '@tauri-apps/api/event'; // Import emit // REMOVE
 // No direct opener import needed now
 // import * as opener from '@tauri-apps/plugin-opener'; 
@@ -511,8 +512,8 @@ const ChatArea = ({
     <div className="flex flex-col w-full h-full"> 
       {/* Top Bar: Model Selector - Restore padding, keep shrink */}
       {currentConversation && availableModels.length > 0 && (
-        <div data-tauri-drag-region className="w-full flex-shrink-0"> {/* Apply drag region to outer wrapper */} 
-          <div className="p-3 border-b border-border flex justify-end"> {/* Inner container for padding/layout */} 
+        <div className="w-full flex-shrink-0" onMouseDown={() => new Window('main').startDragging()}> 
+          <div className="p-3 border-b border-border flex justify-end">  
             {/* Shadcn Select component */}
           <Select
             value={currentConversation.model_config_id}
@@ -666,6 +667,47 @@ interface AssistantStreamStarted {
 interface AssistantStreamFinished {
   messageId: string;
 }
+
+// <<< ADD TitleBarDragHandler Component >>>
+/*
+const DRAG_THRESHOLD_Y = 40; // Pixels from the top to treat as draggable
+
+const TitleBarDragHandler: React.FC = () => {
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      try {
+        if (event.clientY <= DRAG_THRESHOLD_Y) {
+          if (document.documentElement.getAttribute('data-tauri-drag-region') !== 'true') {
+            // console.log('Adding drag region'); // Debugging
+            document.documentElement.setAttribute('data-tauri-drag-region', 'true');
+          }
+        } else {
+          if (document.documentElement.hasAttribute('data-tauri-drag-region')) {
+            // console.log('Removing drag region'); // Debugging
+            document.documentElement.removeAttribute('data-tauri-drag-region');
+          }
+        }
+      } catch (e) {
+        console.error("Error in drag handler:", e);
+        // Potentially remove attribute in case of error during check
+        document.documentElement.removeAttribute('data-tauri-drag-region');
+      }
+    };
+
+    // console.log('Adding mousemove listener'); // Debugging
+    window.addEventListener('mousemove', handleMouseMove);
+
+    // Cleanup function
+    return () => {
+      // console.log('Removing mousemove listener and drag region'); // Debugging
+      window.removeEventListener('mousemove', handleMouseMove);
+      document.documentElement.removeAttribute('data-tauri-drag-region');
+    };
+  }, []); // Empty dependency array ensures this runs only once on mount and cleans up on unmount
+
+  return null; // This component does not render anything
+};
+*/
 
 function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -1355,6 +1397,9 @@ function App() {
 
   return (
     <div className="relative flex h-screen bg-background text-foreground"> {/* Removed pt-10 */}
+      {/* <<< REMOVE the drag handler rendering >>> */}
+      {/* <TitleBarDragHandler /> */}
+
       {/* Mock macOS buttons for inactive state */} 
       <div className="absolute top-2 left-2 flex space-x-2 z-0"> {/* Container for mocks */} 
         <div className="h-3 w-3 rounded-full bg-red-500"></div>
@@ -1365,13 +1410,17 @@ function App() {
       {/* Sidebar */}
       <aside className="w-64 border-r border-border flex flex-col flex-shrink-0">
         {/* Top Section: new chat Button - Use p-3 for height consistency */}
-        <div data-tauri-drag-region> {/* Apply drag region to outer wrapper */} 
-          <div className="p-3 border-b border-border flex justify-end"> {/* Inner container for padding/layout */} 
-            <Button variant="outline" size="icon" onClick={handleNewConversation} title="new chat"> {/* Use size=icon and add title */} 
-              <Plus className="h-4 w-4" /> {/* Removed mr-2 */} 
-          </Button>
+          {/* REMOVE data-tauri-drag-region and relative positioning */}
+          {/* <<< ADD onMouseDown handler using Window >>> */}
+          <div onMouseDown={() => new Window('main').startDragging()}> 
+            {/* REMOVE dedicated drag handle */}
+            {/* Apply standard padding/border/flex for content */}
+            <div className="p-3 border-b border-border flex justify-end"> 
+              <Button variant="outline" size="icon" onClick={handleNewConversation} title="new chat"> 
+                <Plus className="h-4 w-4" /> 
+              </Button>
+            </div>
           </div>
-        </div>
 
         {/* Middle Section: Conversation List - Use ScrollArea */}
         <ScrollArea 

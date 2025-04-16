@@ -13,6 +13,7 @@
     "core:event:default",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister-all",
-    "store:default"
+    "store:default",
+    "core:window:allow-start-dragging"
   ]
 }
