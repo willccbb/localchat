@@ -204,13 +204,13 @@ impl StorageManager {
             log::info!("No model configs found, adding a default OpenAI config.");
             let default_id = Uuid::new_v4();
             let id_text = default_id.to_string();
-            let name = "Default OpenAI Compatible".to_string();
+            let name = "gpt-4.1".to_string();
             let provider = "openai_compatible".to_string();
             // Use OpenAI's official endpoint as a placeholder
             let api_url = "https://api.openai.com/v1".to_string(); 
             // Indicate that the key should be fetched from the environment variable OPENAI_API_KEY
             let api_key_ref = Some("env:OPENAI_API_KEY".to_string()); 
-            let provider_options = Some("{\"model\": \"gpt-4o-mini\"}".to_string()); // Example options
+            let provider_options = Some("{\"model\": \"gpt-4.1\"}".to_string()); // Example options
 
             sqlx::query!(
                 r#"
