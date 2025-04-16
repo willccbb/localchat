@@ -116,45 +116,47 @@ pub async fn send_message(
     conversation_id: String,
     content: String,
 ) -> Result<Message, String> { // Still returns the user message initially
-    log::info!("Frontend requested to send message to conversation ID: {}", conversation_id);
+    log::info!("[send_message] Handler Entered for conversation ID: {}", conversation_id);
     
     let Ok(conv_uuid) = Uuid::parse_str(&conversation_id) else {
         let err_msg = format!("Invalid conversation ID format for send: {}", conversation_id);
         log::error!("{}", err_msg);
         return Err(err_msg);
     };
+    log::info!("[send_message] Parsed conv_uuid: {}", conv_uuid);
 
     let user_message = Message {
         id: Uuid::new_v4(),
         conversation_id: conv_uuid,
         role: "user".to_string(),
-        content,
+        content, // content is passed directly as arg, ok
         timestamp: Utc::now(),
         metadata: None,
     };
+    log::info!("[send_message] Created user_message with ID: {}", user_message.id);
     
     let user_message_clone = user_message.clone();
 
+    // <<< UNCOMMENT Logic >>>
+    // /*
     // --- Save user message ---
-    // Acquire lock temporarily just to save the user message
     {
         let storage = state.storage.lock().await;
         if let Err(e) = storage.save_message(&user_message).await {
             log::error!("Failed to save user message for conversation {}: {:?}", conversation_id, e);
             return Err(format!("Failed to save message: {}", e));
         }
-        log::info!("User message {} saved.", user_message.id);
-        // Lock released when storage goes out of scope here
+        log::info!("[send_message] User message {} saved successfully.", user_message.id);
     }
 
     // --- Trigger API call in background ---
     let app_state_clone = state.inner().clone();
     let conversation_id_clone = conversation_id.clone();
 
+    log::info!("[send_message] Preparing to spawn background task for conv {}", conversation_id_clone);
     tauri::async_runtime::spawn(async move {
         log::info!("Background task started for conversation {}", conversation_id_clone);
-        // ** REMOVED initial lock acquisition here **
-
+        // ... (Keep the rest of the background task logic uncommented) ...
         // 1. Get conversation history (acquire lock temporarily)
         let messages = {
             let storage = app_state_clone.storage.lock().await; // Acquire lock for history
@@ -165,13 +167,12 @@ pub async fn send_message(
                     return; // Exit task
                 }
             }
-            // Lock released when storage goes out of scope here
         };
 
         // 2. Get ModelConfig for this conversation (acquire lock temporarily)
         let model_config = {
             let storage = app_state_clone.storage.lock().await; // Acquire lock for config
-            let conversation = match storage.get_conversation(conv_uuid).await { // Assuming get_conversation exists
+            let conversation = match storage.get_conversation(conv_uuid).await { 
                 Ok(Some(c)) => c,
                 Ok(None) => {
                      log::error!("BG Task: Conversation {} not found", conversation_id_clone);
@@ -189,7 +190,6 @@ pub async fn send_message(
                     return; // Exit task if model config fails
                 }
             }
-            // Lock released when storage goes out of scope here
         };
 
         // --- Create System Prompt ---
@@ -208,14 +208,13 @@ pub async fn send_message(
             Ok(key) => key,
             Err(e) => {
                  log::error!("BG Task: Failed to get API key for {}: {:?}", conversation_id_clone, e);
-                 // TODO: Emit an event to frontend to show error
                  return;
             }
         };
         
         // --- Prepare messages for API (including system prompt) ---
         let mut api_messages = vec![system_prompt];
-        api_messages.extend(messages.iter().cloned()); // Clone messages from history
+        api_messages.extend(messages.iter().cloned()); 
 
         // --- Get API Provider ---
         let api_provider = app_state_clone.api_provider.clone();
@@ -223,110 +222,99 @@ pub async fn send_message(
         // --- Make the API call (Streaming) ---
         log::info!("BG Task: Starting stream request for conversation {}", conversation_id_clone);
         let delta_stream_result = api_provider
-            .send_chat_stream_request(&model_config, &api_key, &api_messages) // Use stream request
+            .send_chat_stream_request(&model_config, &api_key, &api_messages)
             .await;
 
         let mut delta_stream = match delta_stream_result {
             Ok(stream) => stream,
             Err(e) => {
                 log::error!("BG Task: Failed to initiate stream request for {}: {:?}", conversation_id_clone, e);
-                // TODO: Emit an error event to frontend
                 return;
             }
         };
         
         // --- Process Stream and Emit Chunks ---
         let mut full_content = String::new();
-        let assistant_message_id = Uuid::new_v4(); // Generate ID upfront
-        let mut first_chunk = true;
+        let assistant_message_id = Uuid::new_v4();
 
+        // Emit stream started event
+        log::info!("BG Task [{}]: Emitting stream started event.", assistant_message_id);
+        if let Err(e) = app_state_clone.app_handle.emit(
+            "assistant_stream_started",
+            serde_json::json!({
+                "conversationId": conversation_id_clone,
+                "messageId": assistant_message_id.to_string(),
+            })
+        ) {
+            log::error!("BG Task [{}]: Failed to emit stream started event: {:?}. Aborting stream.", assistant_message_id, e);
+            return;
+        }
+
+        // Process stream loop
         log::info!("BG Task [{}]: Starting stream processing loop.", assistant_message_id);
         while let Some(delta_result) = delta_stream.next().await {
-            
-            // >>> Check for cancellation request <<<
             if app_state_clone.cancelled_streams.contains_key(&assistant_message_id) {
                 log::warn!("BG Task: Cancellation requested for message {}. Stopping stream.", assistant_message_id);
-                app_state_clone.cancelled_streams.remove(&assistant_message_id); // Clean up the flag
-                // We still need to save what we have and emit finished
-                break; // Exit the stream processing loop
+                app_state_clone.cancelled_streams.remove(&assistant_message_id);
+                break;
             }
-
             match delta_result {
                 Ok(delta_content) => {
                     log::debug!("BG Task [{}]: Received chunk.", assistant_message_id);
                     full_content.push_str(&delta_content);
-                    
-                    // Emit the chunk to the frontend
                     let chunk_payload = serde_json::json!({
                         "conversationId": conversation_id_clone,
                         "messageId": assistant_message_id.to_string(),
                         "delta": delta_content,
-                        "isFirstChunk": first_chunk,
                     });
-                    first_chunk = false;
-                    
                     if let Err(e) = app_state_clone.app_handle.emit("assistant_message_chunk", chunk_payload) {
                          log::error!("BG Task [{}]: Failed to emit chunk event: {:?}", assistant_message_id, e);
                     }
                 },
                 Err(e) => {
                     log::error!("BG Task [{}]: Error receiving stream delta: {:?}. Breaking loop.", assistant_message_id, e);
-                    // TODO: Emit an error event to frontend?
-                    // We still need to save what we have and emit finished
-                    break; // Stop processing on error
+                    break;
                 }
             }
-        } // End of while loop
+        }
         log::info!("BG Task [{}]: Exited stream processing loop.", assistant_message_id);
 
-        // --- Save the completed (or partially completed) assistant message ---
+        // Save assistant message
         let assistant_message = Message {
             id: assistant_message_id,
             conversation_id: conv_uuid,
             role: "assistant".to_string(),
-            content: full_content, // The fully (or partially) accumulated content
+            content: full_content,
             timestamp: Utc::now(),
-            metadata: None, // Could add metadata about cancellation/error here
+            metadata: None,
         };
-
-        // Acquire lock ONLY for saving (This will now work)
-        log::info!("BG Task [{}]: Attempting to save final message ({} chars)...", assistant_message_id, assistant_message.content.len());
+        log::info!("BG Task [{}]: Attempting to save final message...", assistant_message_id);
         {
-            // Create a new scope for the lock guard
             let storage = app_state_clone.storage.lock().await;
             if let Err(e) = storage.save_message(&assistant_message).await {
-                 log::error!(
-                     "BG Task: Failed to save final assistant message {} for conv {}: {:?}",
-                     assistant_message_id,
-                     conversation_id_clone,
-                     e
-                 );
-                // Don't necessarily exit the whole task, but log the error
+                 log::error!("BG Task: Failed to save final assistant message {}: {:?}", assistant_message_id, e);
             } else {
-                 log::info!(
-                     "BG Task: Successfully saved final assistant message {} for conv {}",
-                     assistant_message_id,
-                     conversation_id_clone
-                 );
+                 log::info!("BG Task: Successfully saved final assistant message {}", assistant_message_id);
             }
-        } // Lock is released here when storage goes out of scope
+        }
 
-        // --- Emit the finished event AFTER saving ---
+        // Emit finished event
         log::info!("BG Task [{}]: Attempting to emit finished event...", assistant_message_id);
-        // *** ENSURE THIS EMITS EVEN IF THE STREAM WAS CANCELLED OR ERRORED ***
         if let Err(e) = app_state_clone.app_handle.emit(
                 "assistant_stream_finished",
                 serde_json::json!({ "messageId": assistant_message_id.to_string() })
             ) {
-            log::error!("BG Task: Failed to emit finished event for {}: {:?}. Message ID: {}", conversation_id_clone, e, assistant_message_id);
+            log::error!("BG Task: Failed to emit finished event for {}: {:?}", conversation_id_clone, e);
         } else {
             log::info!("BG Task: Successfully emitted finished event for message ID: {}", assistant_message_id);
         }
 
         log::info!("BG Task [{}]: Background task finished normally for conversation {}", assistant_message_id, conversation_id_clone);
+        
     }); // End of tauri::async_runtime::spawn
+    // */
 
-    // Return the original user message immediately to the frontend
+    log::info!("[send_message] Returning user message clone immediately (End of main thread)."); // Adjusted log message
     Ok(user_message_clone)
 }
 
@@ -602,7 +590,6 @@ pub async fn regenerate_last_response(
                         "conversationId": conversation_id_clone,
                         "messageId": assistant_message_id.to_string(),
                         "delta": delta_content,
-                        "isFirstChunk": is_first,
                     });
                     
                     if let Err(e) = app_handle_clone.emit("assistant_message_chunk", chunk_payload) {

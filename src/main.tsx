@@ -9,9 +9,7 @@ import "./App.css";
 document.body.classList.add('font-sans', 'bg-background', 'text-foreground');
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
-  </React.StrictMode>,
+  <BrowserRouter>
+    <App />
+  </BrowserRouter>
 );

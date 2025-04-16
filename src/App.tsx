@@ -4,7 +4,7 @@ import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { confirm } from '@tauri-apps/plugin-dialog';
-import { emit } from '@tauri-apps/api/event'; // Import emit
+// import { emit } from '@tauri-apps/api/event'; // Import emit // REMOVE
 // No direct opener import needed now
 // import * as opener from '@tauri-apps/plugin-opener'; 
 // Import clipboard API module
@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button"; // Import shadcn Button
 // Use Tauri v2 clipboard API
 // Attempting core clipboard API import
 // import { clipboard } from '@tauri-apps/api';
-import { Plus, Settings, Trash2, SendHorizonal, Pencil, ClipboardCopy, Check } from "lucide-react"; 
+import { Plus, Settings, Trash2, Pencil, ClipboardCopy, Check, RefreshCw } from "lucide-react"; 
 import { Textarea } from "@/components/ui/textarea"; // Import Textarea
 import {
   Select,
@@ -37,14 +37,13 @@ import MermaidDiagram from '@/components/MermaidDiagram'; // Import Mermaid comp
 // Remove StreamingMarkdownRenderer import
 // import StreamingMarkdownRenderer from '@/components/StreamingMarkdownRenderer'; 
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Square, Edit2, X, Loader2, RefreshCw, CircleHelp } from "lucide-react";
 import { v4 as uuidv4 } from 'uuid'; // For generating temporary IDs
 import { Components } from 'react-markdown'; // Import Components type
-import { register, unregisterAll } from '@tauri-apps/plugin-global-shortcut'; // Use plugin-specific path
 // Create a store instance (use '.settings.dat' for the filename)
 import { LazyStore } from '@tauri-apps/plugin-store'; // <<< RE-ADD IMPORT >>>
 
-// Import Select types explicitly
+// Remove unused Select types
+/*
 import type { 
   SelectProps, 
   SelectContentProps, 
@@ -52,6 +51,7 @@ import type {
   SelectTriggerProps, 
   SelectValueProps 
 } from "@radix-ui/react-select";
+*/
 
 // Define the TypeScript interface for Conversation (matching Rust struct)
 // Ideally, this would be in a separate types.ts file
@@ -132,7 +132,7 @@ const SettingsPage = ({
   useEffect(() => {
     // Use the models passed down from App
     setModelConfigs(availableModels);
-    setIsLoading(false);
+        setIsLoading(false);
     // No need to fetch here anymore
     /*
     async function loadModelConfigs() {
@@ -170,9 +170,9 @@ const SettingsPage = ({
 
   // Handle saving (add or update) model config
   const handleSaveModelConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault(); 
     setError(null);
-    setIsLoading(true);
+    setIsLoading(true); 
 
     let providerOptionsJson: string | undefined = undefined;
     if (formModelName.trim()) {
@@ -225,7 +225,7 @@ const SettingsPage = ({
         console.log('Invoking add_model_config with generated ID...', configData);
         await invoke('add_model_config', { config: configData });
         console.log('Added model config');
-
+        
         const fetchedConfigs = await invoke<ModelConfig[]>('list_model_configs');
         setModelConfigs(fetchedConfigs);
         await onModelsChanged(); // Refresh models in parent
@@ -233,7 +233,7 @@ const SettingsPage = ({
       }
     } catch (err) {
       console.error(`Error ${editingConfigId ? 'updating' : 'adding'} model config:`, err);
-      setError(String(err));
+        setError(String(err));
       // Keep form populated on error so user can retry
     } finally {
         setIsLoading(false);
@@ -244,13 +244,13 @@ const SettingsPage = ({
   const handleDeleteModelConfig = async (idToDelete: string) => {
     // Prevent deleting while editing the same item
     if (editingConfigId === idToDelete) {
-        setError("Cannot delete the configuration while editing it. Please cancel editing first.");
+        setError("cannot delete the configuration while editing it. please cancel editing first.");
         return;
     }
 
-    console.log(`handleDeleteModelConfig called for ID: ${idToDelete}`);
+    console.log(`handleDeleteModelConfig called for ID: ${idToDelete}`); 
     const confirmed = await confirm('Are you sure you want to delete this model configuration?', {
-         title: 'Confirm Deletion'
+         title: 'confirm deletion'
      });
     if (!confirmed) return;
 
@@ -259,17 +259,17 @@ const SettingsPage = ({
     try {
         console.log(`Invoking delete_model_config for ${idToDelete}...`);
         await invoke('delete_model_config', { configId: idToDelete });
-        console.log('Deleted model config');
+        console.log('deleted model config');
         const updatedConfigs = modelConfigs.filter(mc => mc.id !== idToDelete)
         setModelConfigs(updatedConfigs);
         await onModelsChanged(); // Refresh models in parent
-    } catch (err) {
-        console.error('Error deleting model config:', err);
+    } catch (err) { 
+        console.error('error deleting model config:', err);
         setError(String(err));
-    } finally {
+    } finally { 
         setIsLoading(false);
     }
-  };
+};
 
   // Handle changing the utility model (use async/await with LazyStore instance)
   const handleUtilityModelChange = async (newModelId: string) => {
@@ -292,7 +292,7 @@ const SettingsPage = ({
       )}
     >
       {/* Place all content directly inside ScrollArea */}
-      <h1 className="text-2xl font-semibold mb-6">Settings</h1> {/* REMOVED flex-shrink-0 */}
+      <h1 className="text-2xl font-semibold mb-6">settings</h1> {/* Lowercase */}
 
       {error && (
         <div className="text-red-600 bg-red-100 p-3 rounded-md mb-6"> {/* REMOVED flex-shrink-0 */} 
@@ -304,12 +304,12 @@ const SettingsPage = ({
       <div className="space-y-6">
 
          {/* --- Utility Model Selector Card --- */}
-         <Card>
-           <CardHeader>
-             <CardTitle>Utility Model</CardTitle>
+        <Card>
+          <CardHeader>
+             <CardTitle>utility model</CardTitle> {/* Lowercase */}
            </CardHeader>
            <CardContent>
-              <Label htmlFor="utility-model-select" className="mb-2 block">Select model for background tasks (e.g., Naming)</Label>
+              <Label htmlFor="utility-model-select" className="mb-2 block">select model for background tasks (e.g., naming)</Label> {/* Lowercase */}
               <Select 
                 value={utilityModelConfigId ?? ''} // Use empty string if null
                 onValueChange={handleUtilityModelChange}
@@ -334,7 +334,7 @@ const SettingsPage = ({
 
         <Card>
           <CardHeader>
-            <CardTitle>Model Configurations</CardTitle>
+            <CardTitle>model configurations</CardTitle> {/* Lowercase */}
           </CardHeader>
           <CardContent className="space-y-4">
             {isLoading && !editingConfigId && <p>Loading configurations...</p>} {/* Hide loading text when editing */}
@@ -343,9 +343,9 @@ const SettingsPage = ({
               <Card key={config.id} className="p-4 flex justify-between items-center">
                 <div className="space-y-1 flex-grow min-w-0 mr-4">
                   <div className="font-medium break-words">{config.name}</div>
-                  <div className="text-sm text-muted-foreground break-words">Model: {getModelNameFromOptions(config.provider_options)}</div>
-                  <div className="text-sm text-muted-foreground break-words">URL: {config.api_url}</div>
-                  <div className="text-sm text-muted-foreground break-words">Key Ref: {config.api_key_ref || 'N/A'}</div>
+                  <div className="text-sm text-muted-foreground break-words">id = {getModelNameFromOptions(config.provider_options)}</div>
+                  <div className="text-sm text-muted-foreground break-words">url = {config.api_url}</div>
+                  <div className="text-sm text-muted-foreground break-words">key = {config.api_key_ref || 'N/A'}</div>
                 </div>
                 {/* Buttons Container */}
                 <div className="flex flex-col space-y-1 items-end flex-shrink-0">
@@ -355,17 +355,17 @@ const SettingsPage = ({
                       disabled={isLoading || !!editingConfigId} // Disable if loading or already editing another
                       className="w-24 justify-start" // Fixed width and align text
                     >
-                      <Pencil className="h-4 w-4 mr-1" /> Edit
+                      <Pencil className="h-4 w-4 mr-1" /> edit {/* Lowercase */}
                     </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteModelConfig(config.id)}
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleDeleteModelConfig(config.id)}
                       disabled={isLoading || !!editingConfigId} // Disable if loading or editing
                       className="w-24 justify-start" // Fixed width and align text
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" /> Delete
-                    </Button>
+                >
+                      <Trash2 className="h-4 w-4 mr-1" /> delete {/* Lowercase */}
+                </Button>
                 </div>
               </Card>
             ))}
@@ -374,48 +374,48 @@ const SettingsPage = ({
 
         {/* Add/Edit Form Card */}
         <div className="pt-6 border-t" ref={formCardRef}> {/* Add ref here */}
-          <Card>
-            <CardHeader>
+        <Card>
+          <CardHeader>
               {/* Dynamic Title */}
-              <CardTitle>{editingConfigId ? 'Edit Model Configuration' : 'Add New Model'}</CardTitle>
-            </CardHeader>
+              <CardTitle>{editingConfigId ? 'edit model configuration' : 'add new model'}</CardTitle> {/* Lowercase */}
+          </CardHeader>
             {/* Use the unified save handler */}
             <form onSubmit={handleSaveModelConfig}>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="formName">Name</Label>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                  <Label htmlFor="formName">name</Label> {/* Lowercase */}
                   {/* Use form state variables */}
                   <Input id="formName" value={formName} onChange={e => setFormName(e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="formApiUrl">API URL</Label>
+              </div>
+              <div className="space-y-2">
+                  <Label htmlFor="formApiUrl">api url</Label> {/* Lowercase */}
                   <Input id="formApiUrl" type="url" value={formApiUrl} onChange={e => setFormApiUrl(e.target.value)} required placeholder="e.g., https://api.openai.com/v1" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="formApiKeyRef">API Key Ref</Label>
+              </div>
+              <div className="space-y-2">
+                  <Label htmlFor="formApiKeyRef">api key ref</Label> {/* Lowercase */}
                   <Input id="formApiKeyRef" value={formApiKeyRef} onChange={e => setFormApiKeyRef(e.target.value)} placeholder="e.g., env:MY_KEY or keyring" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="formModelName">Model ID</Label>
+              </div>
+              <div className="space-y-2">
+                  <Label htmlFor="formModelName">model id</Label> {/* Lowercase */}
                   <Input id="formModelName" value={formModelName} onChange={e => setFormModelName(e.target.value)} required placeholder="e.g., gpt-4o-mini" />
-                </div>
-              </CardContent>
+              </div>
+            </CardContent>
               <CardFooter className="flex justify-between"> {/* Use flex justify-between */}
                 {/* Dynamic Submit Button Text */}
-                <Button type="submit" disabled={isLoading}>
-                  {isLoading ? (editingConfigId ? 'Updating...' : 'Adding...') : (editingConfigId ? 'Update Configuration' : 'Add Configuration')}
-                </Button>
+              <Button type="submit" disabled={isLoading}>
+                  {isLoading ? (editingConfigId ? 'Updating...' : 'Adding...') : (editingConfigId ? 'update configuration' : 'add configuration')} {/* Lowercase */}
+              </Button>
                 {/* Cancel Button (only shown when editing) */}
                 {editingConfigId && (
                   <Button type="button" variant="outline" onClick={handleCancelEditing} disabled={isLoading}>
-                    Cancel
+                    cancel {/* Lowercase */}
                   </Button>
                 )}
-              </CardFooter>
-            </form>
-          </Card>
-        </div>
+            </CardFooter>
+          </form>
+        </Card>
       </div>
+    </div>
     </ScrollArea>
   );
 };
@@ -429,7 +429,6 @@ const ChatArea = ({
   currentConversation,
   availableModels,
   handleModelChange,
-  isStreaming,
   handleStopGeneration,
   handleCopy,
   handleRegenerate,
@@ -444,15 +443,14 @@ const ChatArea = ({
   currentConversation: Conversation | undefined,
   availableModels: ModelConfig[],
   handleModelChange: (newModelConfigId: string) => Promise<void>,
-  isStreaming: boolean,
   handleStopGeneration: () => Promise<void>,
   handleCopy: (id: string, content: string) => Promise<void>,
   handleRegenerate: () => Promise<void>,
   copiedMessageId: string | null,
   isLoading: boolean,
-  streamingMessageId: string | null,
+  streamingMessageId: string | null | undefined,
 }) => {
-  console.log('ChatArea received:', { isStreaming, streamingMessageId });
+  // console.log('ChatArea received:', { isCurrentConversationStreaming }); // REMOVE LOG
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // --- Define components statically outside the map --- 
@@ -471,51 +469,37 @@ const ChatArea = ({
       return <a href={href} onClick={handleClick} {...props} />;
     },
 
-    // Custom code renderer (conditionally simplified)
+    // Custom code renderer (REMOVE conditional rendering)
     code({ node, className, children, style, ...rest }) {
-      const isCurrentlyStreaming = isStreaming; // Simplified check: render basic if *anything* is streaming
+      // const isCurrentlyStreaming = isCurrentConversationStreaming;
+      // if (isCurrentlyStreaming) { ... } // REMOVE BLOCK
 
-      if (isCurrentlyStreaming) {
-        // Simple rendering during stream
-        return <code {...rest} className={className}>{children}</code>;
-      }
-      
-      // Full rendering after stream (or if not streaming) - Revert to rehypeHighlight logic
+      // Always use full rendering logic
       const match = /language-(\w+)/.exec(className || '');
       if (match && match[1] === 'mermaid') {
          return <MermaidDiagram chart={String(children).replace(/\n$/, '')} />
       }
-
-      // Let rehypeHighlight handle classes for code blocks and inline code
-      // Apply overflow only if it's likely a block (has language class)
       const finalClassName = match ? cn(className, "overflow-x-auto w-full") : className;
-      return (
+  return (
         <code {...rest} className={finalClassName}>
           {children}
         </code>
       );
     },
 
-    // Custom pre renderer (conditionally simplified) - Revert logic
+    // Custom pre renderer (REMOVE conditional rendering)
     pre: ({ node, children, className: initialClassName, ...props }: any) => {
-      const isCurrentlyStreaming = isStreaming; // Simplified check
+      // const isCurrentlyStreaming = isCurrentConversationStreaming;
+      // if (isCurrentlyStreaming) { ... } // REMOVE BLOCK
 
-      if (isCurrentlyStreaming) {
-        // Simple rendering during stream
-        return <pre {...props} className={cn(initialClassName, "block overflow-x-auto w-full")}>{children}</pre>;
-      }
-
-      // Full rendering after stream (or if not streaming)
-      // Use logic similar to before, relying on rehypeHighlight structure
+      // Always use full rendering logic
       let isCodeBlock = false;
       if (React.isValidElement(children) && children.type === 'code') {
-        if (React.isValidElement(children) && (children as React.ReactElement).type === 'code') {
-          isCodeBlock = true;
-        }
+         // Check if the direct child is a <code> element, indicating a block
+         isCodeBlock = true;
       }
-      // Add back relative positioning needed for action buttons
       const finalClassName = isCodeBlock 
-        ? cn(initialClassName, "block overflow-x-auto w-full relative") 
+        ? cn(initialClassName, "block overflow-x-auto w-full relative") // Keep relative for potential buttons
         : initialClassName; 
       return (
         <pre {...props} className={finalClassName}>
@@ -532,25 +516,25 @@ const ChatArea = ({
         <div data-tauri-drag-region className="w-full flex-shrink-0"> {/* Apply drag region to outer wrapper */} 
           <div className="p-3 border-b border-border flex justify-end"> {/* Inner container for padding/layout */} 
             {/* Shadcn Select component */}
-            <Select 
-              value={currentConversation.model_config_id}
-              onValueChange={handleModelChange}
-            >
+          <Select
+            value={currentConversation.model_config_id}
+            onValueChange={handleModelChange}
+          >
               {/* Trigger contains the visual element */} 
               <SelectTrigger className="w-[220px]">
                 {/* Value displays the selected value, with a placeholder */}
-                <SelectValue placeholder="Select model" />
-              </SelectTrigger>
+              <SelectValue placeholder="Select model" />
+            </SelectTrigger>
               {/* Content contains the dropdown items */} 
-              <SelectContent>
-                {availableModels.map(model => (
+            <SelectContent>
+              {availableModels.map(model => (
                   // Item represents each option 
-                  <SelectItem key={model.id} value={model.id}>
-                    {model.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                <SelectItem key={model.id} value={model.id}>
+                  {model.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           </div>
         </div>
       )}
@@ -562,11 +546,13 @@ const ChatArea = ({
         <div className="h-4 flex-shrink-0"></div> {/* Top spacer */} 
         {currentMessages.map((msg, index) => {
           const displayContent = msg.content; 
+          // <<< Check if THIS message is the one currently streaming >>>
+          const isThisMessageStreaming = msg.id === streamingMessageId;
 
           return (
            <div 
-             key={msg.id || index} 
-             className={cn(
+             key={msg.id}
+              className={cn(
                "group relative flex mb-4", 
                msg.role === 'user' ? 'justify-end' : 'justify-start'
              )}
@@ -577,24 +563,22 @@ const ChatArea = ({
                 msg.role === 'user' ? 'bg-secondary text-foreground' : ''
               )}
             >
-              <div className="prose dark:prose-invert prose-sm \
-                               break-words \
-                               prose-p:m-0 prose-pre:m-2 prose-pre:p-0 prose-pre:bg-transparent \
-                               prose-table:block prose-table:max-w-none prose-table:overflow-x-auto prose-table:min-w-full">
-                  <ReactMarkdown 
+              {/* <<< ALWAYS Render with ReactMarkdown >>> */}
+              <div className="prose dark:prose-invert prose-sm \n                           break-words \n                           prose-p:m-0 prose-pre:m-2 prose-pre:p-0 prose-pre:bg-transparent \n                           prose-table:block prose-table:max-w-none prose-table:overflow-x-auto prose-table:min-w-full">
+                <ReactMarkdown 
                     remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeRaw, rehypeKatex, rehypeHighlight]} // Add rehypeHighlight back
-                    components={markdownComponents} // Use statically defined components
-                  >
+                    rehypePlugins={[rehypeRaw, rehypeKatex, rehypeHighlight]}
+                    components={markdownComponents}
+                >
                      {typeof displayContent === 'string' ? displayContent : ''}
-                  </ReactMarkdown>
+                </ReactMarkdown>
               </div>
               {/* === ACTION BUTTONS START === */}
               <div className="absolute bottom-1 right-1 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 rounded p-0.5">
                 {/* Copy Button */}
-                <Button
-                  variant="ghost"
-                  size="icon"
+              <Button 
+                variant="ghost"
+                size="icon"
                   className="h-6 w-6"
                   onClick={() => handleCopy(msg.id, displayContent)}
                   title="Copy"
@@ -613,15 +597,15 @@ const ChatArea = ({
                     size="icon"
                     className="h-6 w-6"
                     onClick={handleRegenerate}
-                    disabled={isLoading || isStreaming} // Disable if loading/streaming
+                    disabled={isLoading} // Disable if loading
                     title="Regenerate"
                   >
                     <RefreshCw className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
+              </Button>
+            )}
+          </div>
               {/* === ACTION BUTTONS END === */}
-            </div>
+      </div>
            </div>
           );
         })}
@@ -631,7 +615,7 @@ const ChatArea = ({
 
       {/* Input Area / Stop Button Container - REMOVED justify-center */}
       <div className="px-6 pb-4 flex-shrink-0">
-        {isStreaming ? (
+        {isLoading ? (
           // Wrap Stop Button in a centering div
           <div className="flex justify-center">
             <Button variant="secondary" onClick={handleStopGeneration} className="font-normal text-zinc-700">
@@ -640,43 +624,49 @@ const ChatArea = ({
           </div>
         ) : (
           // Show Input Form when not streaming - ADD w-full to form
-          <form 
+        <form 
             className="flex items-center w-full" 
-            onSubmit={(e) => { 
-              e.preventDefault(); 
-              handleSendMessage(); 
-            }}
-          >
-            <Textarea
-              value={currentInput}
-              onChange={(e) => setCurrentInput(e.target.value)}
-              placeholder="Type your message..."
+          onSubmit={(e) => { 
+            e.preventDefault(); 
+            handleSendMessage(); 
+          }}
+        >
+          <Textarea
+            value={currentInput}
+            onChange={(e) => setCurrentInput(e.target.value)}
+              placeholder="type your message..." // Lowercase
               className="relative z-10 flex-grow resize-none bg-secondary border-0 rounded-md p-3 focus:outline-none focus:ring-0 focus:shadow-none focus:border-transparent shadow-[0px_0px_20px_20px_rgba(255,255,255,1.0)]"
               rows={1}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              disabled={isStreaming} // Also disable textarea just in case
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
+              disabled={isLoading} // Also disable textarea just in case
             />
-          </form>
+        </form>
         )}
       </div>
     </div>
   );
 };
 
-// Define the structure of the chunk payload from backend
+// Define the structure of the chunk payload from backend (No isFirstChunk)
 interface AssistantMessageChunk {
   conversationId: string;
   messageId: string; // The ID of the message being streamed
   delta: string; // The content chunk
-  isFirstChunk: boolean;
+  // isFirstChunk: boolean; // REMOVED
 }
 
-// Define the structure for the NEW stream finished event
+// Define the structure for the NEW stream started event
+interface AssistantStreamStarted {
+  conversationId: string;
+  messageId: string;
+}
+
+// Define the structure for the stream finished event
 interface AssistantStreamFinished {
   messageId: string;
 }
@@ -688,28 +678,35 @@ function App() {
   const [currentMessages, setCurrentMessages] = useState<Message[]>([]);
   const [currentInput, setCurrentInput] = useState('');
   const [availableModels, setAvailableModels] = useState<ModelConfig[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const location = useLocation(); // Get current location
   const navigate = useNavigate(); // For navigation
   const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
-
-  // State for streaming status
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [utilityModelConfigId, setUtilityModelConfigId] = useState<string | null>(null);
+  
+  // <<< ADD State for triggering conversation list refresh >>>
+  const [needsConversationRefresh, setNeedsConversationRefresh] = useState(false);
 
-  // Refs for debouncing the message update
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const accumulatedContentRef = useRef<string>(''); // Stores full content for the current streaming message
-  const throttleTimerRef = useRef<NodeJS.Timeout | null>(null); // Ref for throttling UI updates
+  // <<< ADD State for per-conversation streaming status >>>
+  const [streamingStatus, setStreamingStatus] = useState<Record<string, boolean>>({});
+  // <<< RE-ADD streamingMessagesRef for ID mapping >>>
+  const streamingMessagesRef = useRef<Record<string, string | null>>({});
 
-  // --- Refs to access latest state in callbacks ---
+  // --- RE-ADD Ref to map message IDs back to conversation IDs --- 
+  const messageIdToConvoIdMapRef = useRef<Record<string, string>>({});
+  
+  // <<< ADD Refs to hold listener cleanup functions >>>
+  const unlistenStartedRef = useRef<(() => void) | null>(null);
+  const unlistenChunkRef = useRef<(() => void) | null>(null);
+  const unlistenFinishedRef = useRef<(() => void) | null>(null);
+  // <<< ADD Ref for conversation updated listener >>>
+  const unlistenUpdatedRef = useRef<(() => void) | null>(null);
+
+  // Refs to access latest state in callbacks
   const currentConversationIdRef = useRef<string | null>(currentConversationId);
   const conversationsRef = useRef<Conversation[]>(conversations);
-  const currentMessagesRef = useRef<Message[]>(currentMessages);
-  const utilityModelConfigIdRef = useRef<string | null>(utilityModelConfigId); // <<< ADD REF >>>
+  const utilityModelConfigIdRef = useRef<string | null>(utilityModelConfigId);
 
   // --- Effects to keep refs updated ---
   useEffect(() => {
@@ -721,37 +718,17 @@ function App() {
   }, [conversations]);
 
   useEffect(() => {
-    currentMessagesRef.current = currentMessages;
-  }, [currentMessages]);
-
-  useEffect(() => {
     utilityModelConfigIdRef.current = utilityModelConfigId;
-  }, [utilityModelConfigId]); // <<< ADD EFFECT >>>
-  
-  // Ref for debouncing the shortcut trigger itself
-  const shortcutDebounceTimer = useRef<NodeJS.Timeout | null>(null);
-
-  // --- Debounced function to update React state (defined outside useEffect) ---
-  const updateMessagesDebounced = useCallback(() => {
-      // No need to read streamingMessageId here, use the one captured in the closure
-      // when the timer was set, or rely on the check within the listener
-      setCurrentMessages(prevMessages =>
-          prevMessages.map(msg =>
-              msg.id === streamingMessageId // Use the state variable holding the ID
-                  ? { ...msg, content: accumulatedContentRef.current } // Update with latest accumulated content
-                  : msg
-          )
-      );
-  }, [setCurrentMessages, streamingMessageId]); // Dependencies: only need setter + the ID used inside
+  }, [utilityModelConfigId]);
 
   // Helper to find the full Conversation object
   const currentConversation = conversations.find(c => c.id === currentConversationId);
 
   // Helper to find the full ModelConfig object
-  const currentModelConfig = availableModels.find(m => m.id === currentConversation?.model_config_id);
+  // const currentModelConfig = availableModels.find(m => m.id === currentConversation?.model_config_id); // REMOVE
 
-  // Function to load all conversations
-  const loadConversations = async () => {
+  // Function to load all conversations (WRAPPED IN useCallback)
+  const loadConversations = useCallback(async () => {
     console.log("Loading conversations...");
     setError(null);
     try {
@@ -760,36 +737,49 @@ function App() {
       // Sort by last_updated_at descending (most recent first)
       convos.sort((a, b) => new Date(b.last_updated_at).getTime() - new Date(a.last_updated_at).getTime());
       setConversations(convos);
-      // If no conversation is selected, or selected doesn't exist, select the first one
-      if ((!currentConversationId || !convos.find(c => c.id === currentConversationId)) && convos.length > 0) {
+
+      // --- Refined Auto-Selection Logic --- 
+      // <<< Use Ref for current ID to avoid stale state in closure >>>
+      const currentId = currentConversationIdRef.current;
+      const stillExists = currentId && convos.some(c => c.id === currentId);
+      // Auto-select first convo ONLY if no convo is selected OR the selected one disappeared
+      if ((!currentId || !stillExists) && convos.length > 0) {
         const firstConvoId = convos[0].id;
         setCurrentConversationId(firstConvoId);
         navigate(`/chat/${firstConvoId}`, { replace: true }); // Navigate to the first convo
-        console.log(`Automatically selected first conversation: ${firstConvoId}`);
+        console.log(`Auto-selecting first conversation: ${firstConvoId} (Previous ID: ${currentId}, Existed: ${stillExists})`);
+      } else {
+        console.log(`Keeping current conversation selected: ${currentId}`);
       }
     } catch (err) {
       console.error('Error loading conversations:', err);
       setError(String(err));
     }
-  };
+  }, [navigate, setConversations, currentConversationIdRef]); // <<< Update dependencies >>>
 
   // Function to load messages for a specific conversation
-  const loadMessages = async (conversationId: string | null) => {
+  const loadMessages = useCallback(async (conversationId: string | null) => {
+    console.log(`[loadMessages ENTERED] for conversationId: ${conversationId}`); 
     if (!conversationId) {
       setCurrentMessages([]);
       return;
     }
+    // <<< REMOVE Explicitly clear messages before loading >>>
+    // setCurrentMessages([]); 
     console.log(`Loading messages for conversation ${conversationId}...`);
     setError(null);
     try {
       const msgs = await invoke<Message[]>('get_conversation_messages', { conversationId });
+      // <<< ADD Log to inspect fetched messages >>>
+      console.log(`[loadMessages Raw Result for ${conversationId}]`, msgs);
+      
       msgs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       setCurrentMessages(msgs);
     } catch (err) {
       console.error(`Error loading messages for ${conversationId}:`, err);
       setError(String(err));
     }
-  };
+  }, [setCurrentMessages]); // <<< ADD setCurrentMessages dependency >>>
 
   // Function to load available model configurations
   const loadModels = async () => {
@@ -830,260 +820,74 @@ function App() {
 
   }, []); // Run only once on mount
 
-  // Listen for STREAMING chunks from the backend
+  // Effect to load messages when currentConversationId changes
   useEffect(() => {
-    let unlistenChunkFn: (() => void) | null = null;
-
-    async function setupChunkListener() {
-      try {
-        unlistenChunkFn = await listen<AssistantMessageChunk>('assistant_message_chunk', (event) => {
-          const { conversationId, messageId, delta, isFirstChunk } = event.payload;
-
-          // --- Check if related to current convo --- 
-          if (conversationId !== currentConversationId) {
-              return; // Ignore chunks for other convos
-          }
-
-          // --- Process Chunk --- 
-          if (isFirstChunk) {
-             // --- Update streaming state and prepare placeholder --- 
-             setIsStreaming(prevIsStreaming => {
-                 if (!prevIsStreaming) {
-                     setStreamingMessageId(messageId); // Store the ID
-                     // Initialize accumulator with the first chunk's content
-                     accumulatedContentRef.current = delta; 
-                     // Add placeholder message immediately with EMPTY content
-                     setCurrentMessages(prevMessages => [
-                         ...prevMessages,
-                         {
-                             id: messageId, 
-                             conversation_id: conversationId,
-                             role: 'assistant' as 'assistant',
-                             content: delta, // << Use first chunk's delta directly
-                             timestamp: new Date().toISOString(),
-                             metadata: undefined,
-                         }
-                     ]);
-                     return true;
-                 }
-                 return prevIsStreaming; // Already streaming, no change
-             });
-             // Skip accumulation and throttling for the very first chunk, 
-             // as it's already handled in the initial state update.
-             return; // Exit the handler early for the first chunk
-          }
-
-          // --- Accumulate content for ALL chunks (including first) --- 
-          // We only update the accumulated ref here. The final state update happens
-          // in the 'finished' listener to avoid race conditions.
-          setStreamingMessageId(currentStreamingId => {
-              // Ensure we only accumulate for the currently active stream
-              if (messageId === currentStreamingId) {
-                 accumulatedContentRef.current += delta; 
-
-                 // --- Throttle UI updates --- 
-                 if (!throttleTimerRef.current) { // Only set timer if not already active
-                     // Capture current state for the closure
-                     const currentAccumulated = accumulatedContentRef.current;
-                     const currentMessageId = currentStreamingId;
-
-                     throttleTimerRef.current = setTimeout(() => {
-                         setCurrentMessages(prevMessages =>
-                             prevMessages.map(msg =>
-                                 msg.id === currentMessageId
-                                     ? { ...msg, content: currentAccumulated } // Update with captured content
-                                     : msg
-                             )
-                         );
-                         throttleTimerRef.current = null; // Clear timer ID after execution
-                     }, 150); // Throttle interval (150ms)
-                 }
-              }
-              return currentStreamingId; // Always return the current ID
-          });
-        });
-      } catch (e) {
-        console.error("Failed to set up assistant message chunk listener:", e);
-        setError("Failed to connect for assistant responses.");
-      }
+    if (currentConversationId && !streamingStatus[currentConversationId]) {
+      // Target conversation is NOT streaming, load from DB
+      console.log(`[loadMessages Effect] Loading from DB for ${currentConversationId}`);
+      loadMessages(currentConversationId);
+    } else if (currentConversationId) {
+      // Target conversation IS streaming, ensure current state reflects it
+      console.log(`[loadMessages Effect] Switching view to ALREADY STREAMING convo ${currentConversationId}. State should contain partial message.`);
+      // No explicit load needed, state updates come from queue processor.
+      // We might need to trigger a re-render if just switching ID isn't enough,
+      // but the change in currentConversationId passed to ChatArea SHOULD trigger it.
+      // If issues persist, we could potentially filter currentMessages here,
+      // but that assumes the queue processor has kept the state consistent.
+                    } else {
+      // currentConversationId is null
+      console.log(`[loadMessages Effect] Skipping load because conversation ID is null.`);
+      setCurrentMessages([]); // Clear messages if no conversation is selected
     }
+  }, [currentConversationId, loadMessages, streamingStatus]);
 
-    setupChunkListener();
-
-    // Cleanup listener and debounce timer on unmount
-    return () => {
-      console.log('Cleaning up assistant chunk listener and debounce timer');
-      if (debounceTimerRef.current) {
-          clearTimeout(debounceTimerRef.current);
-          debounceTimerRef.current = null;
-      }
-      accumulatedContentRef.current = ''; // Reset accumulator
-      if (unlistenChunkFn) {
-        unlistenChunkFn();
-      }
-    };
-  }, [currentConversationId, setCurrentMessages, setStreamingMessageId]); // REMOVED isStreaming
-
-  // <<< Listen for stream FINISHED event from backend >>>
-  useEffect(() => {
-    let unlistenFinishedFn: (() => void) | null = null;
-
-    // Define the final update logic here, separate from the debounced one used during streaming
-    const performFinalUpdate = (targetMessageId: string) => {
+  const handleChunkReceived = (event: any) => {
+    const payload = event.payload as AssistantMessageChunk;
+    const { messageId, delta } = payload;
+    const chunkConversationId = messageIdToConvoIdMapRef.current[messageId];
+    // <<< MODIFY: Directly update state if conversation matches >>>
+    if (chunkConversationId && chunkConversationId === currentConversationIdRef.current) {
       setCurrentMessages(prevMessages =>
-          prevMessages.map(msg =>
-              msg.id === targetMessageId 
-                  ? { ...msg, content: accumulatedContentRef.current } // Use final accumulated content
-                  : msg
-          )
+        prevMessages.map(msg =>
+          msg.id === messageId
+            ? { ...msg, content: msg.content + delta } 
+            : msg
+        )
       );
-    };
+    } 
+  };
 
-    async function setupFinishedListener() {
-      try {
-        unlistenFinishedFn = await listen<AssistantStreamFinished>('assistant_stream_finished', (event) => {
-          const { messageId } = event.payload;
-          console.log(`[Finished Listener] Received event for messageId: ${messageId}`, event.payload); // Log received event
+  const handleStreamFinished = (event: any) => {
+    // ...
+  }
 
-          // === Declare CAPTURE variables in the outer scope ===
-          let capturedConversationId: string | null = null;
-          let capturedTitle: string | undefined = undefined;
-          let capturedMessagesLength = 0;
-
-          // Need latest streamingMessageId for comparison & cleanup
-          setStreamingMessageId(currentId => {
-            console.log(`[Finished Listener] Inside setStreamingMessageId callback. currentId: ${currentId}`); // Log currentId value
-
-            if (messageId === currentId) {
-              console.log(`[Finished Listener] Matched streamingMessageId (${currentId}). Resetting state.`);
-              
-              // Capture necessary info for title gen check (using REFs for latest state)
-              capturedConversationId = currentConversationIdRef.current; 
-              const currentConvo = conversationsRef.current.find(c => c.id === capturedConversationId);
-              capturedTitle = currentConvo?.title;
-              capturedMessagesLength = currentMessagesRef.current.length;
-
-              // --- State Reset and Cleanup Logic --- 
-              console.log('[Finished Listener] Clearing active throttle timer.'); // Log timer clear
-              if (throttleTimerRef.current) { 
-                 clearTimeout(throttleTimerRef.current); 
-                 throttleTimerRef.current = null; 
-              }
-              console.log('[Finished Listener] Calling performFinalUpdate...'); // Log before final update
-              performFinalUpdate(currentId); // Use the ID we know matched
-              console.log('[Finished Listener] performFinalUpdate called.'); // Log after final update
-              accumulatedContentRef.current = ''; // Reset accumulator
-              
-              console.log('[Finished Listener] Calling setIsStreaming(false)...'); // Log before state reset
-              setIsStreaming(false);
-              console.log(`[Finished Listener] State AFTER setIsStreaming(false): isStreaming=false (expected)`);
-              console.log('[Finished Listener] Returning null for streamingMessageId.'); // Log before ID reset
-              return null; // Reset the ID
-            } else {
-              console.log(`[Finished Listener] Mismatched ID (current: ${currentId}, received: ${messageId}). No state change.`);
-              return currentId; // Keep current ID if no match
-            }
-          });
-
-          // <<< Trigger Title Generation AFTER state updates (using CAPTURED values & REF) >>>
-          setTimeout(() => {
-             // Use the values captured *before* state was reset inside the listener 
-             if (capturedConversationId) { 
-                // Read utility model ID from ref for latest value
-                const currentUtilModelId = utilityModelConfigIdRef.current; 
-                console.log(`[Title Trigger Check] Captured Convo ID: ${capturedConversationId}, Title: ${capturedTitle}, Msgs: ${capturedMessagesLength}, Util Model ID: ${currentUtilModelId}`);
-
-                if (
-                    capturedTitle === "New Chat" && 
-                    capturedMessagesLength >= 2 && // Check >= 2 messages
-                    currentUtilModelId // <<< READ FROM REF >>>
-                ) {
-                    console.log(`[Title Trigger] Invoking generate_conversation_title for ${capturedConversationId}`);
-                    invoke('generate_conversation_title', { 
-                        conversationId: capturedConversationId,
-                        utilityModelConfigId: currentUtilModelId // <<< PASS VALUE FROM REF >>>
-                    })
-                    .then(() => console.log(`[Title Trigger] generate_conversation_title invoked successfully for ${capturedConversationId}`))
-                    .catch((err: unknown) => console.error(`[Title Trigger] Error invoking generate_conversation_title for ${capturedConversationId}:`, err));
-                } else {
-                    console.log("[Title Trigger] Conditions not met for title generation based on captured state.");
-                }
-            } else {
-                 console.log("[Title Trigger] Captured conversation ID is null, skipping title generation check (likely ID mismatch earlier).");
-             }
-          }, 0); // Use setTimeout with 0 delay
-        });
-      } catch (e) {
-        console.error("Failed to set up assistant finished listener:", e);
-        // Optionally set an error state here
-      }
-    }
-
-    setupFinishedListener();
-
-    // Cleanup listener on unmount
-    return () => {
-      console.log('Cleaning up assistant finished listener');
-      if (unlistenFinishedFn) {
-        unlistenFinishedFn();
-      }
-    };
-  }, [setCurrentMessages, setStreamingMessageId]); // Removed streamingMessageId, setters are stable
-
-  // <<< Listen for CONVERSATION UPDATED event from backend (e.g., after title gen) >>>
+  // <<< ADD Effect to handle conversation refresh trigger >>>
   useEffect(() => {
-    let unlistenUpdateFn: (() => void) | null = null;
-    interface ConversationUpdatePayload {
-      conversationId: string;
+    if (needsConversationRefresh) {
+      console.log("[Refresh Effect] needsConversationRefresh is true, calling loadConversations...");
+      loadConversations();
+      setNeedsConversationRefresh(false); // Reset trigger
     }
+  }, [needsConversationRefresh, loadConversations]); // Depend on trigger and load function
 
-    async function setupConversationUpdateListener() {
-      try {
-        unlistenUpdateFn = await listen<ConversationUpdatePayload>('conversation_updated', (event) => {
-          const { conversationId: updatedId } = event.payload;
-          console.log(`[Conversation Update Listener] Received update event for ID: ${updatedId}`);
-          // If the updated conversation is the currently selected one OR
-          // if no conversation is selected (to refresh the list generally)
-          // we reload the conversation list.
-          if (updatedId === currentConversationId || currentConversationId === null) {
-            console.log(`[Conversation Update Listener] Reloading conversations due to update for relevant ID: ${updatedId}`);
-            loadConversations(); // Reload the list from the backend
-          }
-        });
-      } catch (e) {
-        console.error("Failed to set up conversation updated listener:", e);
-      }
-    }
-
-    setupConversationUpdateListener();
-
-    return () => {
-      console.log('Cleaning up conversation updated listener');
-      if (unlistenUpdateFn) {
-        unlistenUpdateFn();
-      }
-    };
-  }, [currentConversationId, loadConversations]); // Depend on current ID and the reload function
-
-  // Define the handler function (no useCallback needed here)
+  // RE-ADD handleNewConversation function
   const handleNewConversation = async () => {
     console.log("[Handler Ref] ENTERING handleNewConversation");
     setError(null);
-    setIsLoading(true);
+    // setIsLoading(true); // <<< REMOVE STATE UPDATE >>>
     try {
       if (availableModels.length === 0) {
           setError("Cannot create chat: No models configured.");
-          // Don't exit handler here, let finally set loading false
       } else {
-          const defaultModelId = availableModels[0].id;
+      const defaultModelId = availableModels[0].id;
           console.log(`[Handler Ref] Using default model ID: ${defaultModelId}`);
-          const newConvo = await invoke<Conversation>('create_conversation', { modelConfigId: defaultModelId });
+      const newConvo = await invoke<Conversation>('create_conversation', { modelConfigId: defaultModelId });
           console.log("[Handler Ref] Created new conversation:", newConvo);
           setConversations(prevConversations => 
               [newConvo, ...prevConversations]
                   .sort((a, b) => new Date(b.last_updated_at).getTime() - new Date(a.last_updated_at).getTime())
           );
-          setCurrentConversationId(newConvo.id);
+      setCurrentConversationId(newConvo.id);
           setCurrentInput(''); 
           navigate(`/chat/${newConvo.id}`); 
       }
@@ -1093,94 +897,108 @@ function App() {
          setError(err.message);
        } else {
          console.error('[Handler Ref] Error creating new conversation:', String(err));
-         setError(String(err));
+      setError(String(err));
        }
     } finally {
-      setIsLoading(false);
+      // setIsLoading(false); // <<< REMOVE STATE UPDATE >>>
       console.log("[Handler Ref] EXITING handleNewConversation");
     }
   };
 
-  // --- Ref to hold the latest version of the handler --- 
-  const handleNewConversationRef = useRef(handleNewConversation);
-
-  // --- Effect to update the ref --- 
-  useEffect(() => {
-    // Update the ref's current value whenever the component re-renders
-    // or specifically when dependencies of the conceptual handler change.
-    handleNewConversationRef.current = handleNewConversation;
-  }, [availableModels, navigate, setError, setIsLoading, setCurrentConversationId, setCurrentInput, setConversations]); // Dependencies that affect the handler's logic
-
-  // Handle sending a message
+  // Handle sending a message (Update Ref & State)
   const handleSendMessage = async () => {
-    // Log the guard condition check AND the state value
-    console.log(`handleSendMessage: Checking guard. Current isStreaming=${isStreaming}`); // ADDED LOG
-    console.log('handleSendMessage Guard Check:', {
-        canSubmit: !(!currentInput.trim() || !currentConversationId || isLoading || isStreaming),
-        inputOk: !!currentInput.trim(),
-        convoIdOk: !!currentConversationId,
-        isLoading: isLoading,
-        isStreaming: isStreaming,
-    });
-    if (!currentInput.trim() || !currentConversationId || isLoading || isStreaming) {
-        console.log(`handleSendMessage blocked: isStreaming=${isStreaming}, isLoading=${isLoading}`); // Enhanced log
-        return;
-    }
-    console.log(`Sending message to ${currentConversationId}...`);
-    setError(null);
-    setIsLoading(true);
+    const conversationIdToSend = currentConversationIdRef.current;
+    // Guards (unchanged)
+    if (!currentInput.trim() || !conversationIdToSend) { /* ... */ return; }
+    if (streamingStatus[conversationIdToSend]) { /* ... */ return; }
+    
     const userMessageContent = currentInput;
-    setCurrentInput(''); // Clear input immediately
-
-    // Define temp message here so it's in scope for the catch block
-    const tempUserMessage: Message = {
-        id: `temp_${Date.now()}`,
-        conversation_id: currentConversationId,
+    // <<< Restore userMessage object creation >>>
+    const userMessage: Message = {
+        id: `temp_user_${Date.now()}`,
+        conversation_id: conversationIdToSend,
         role: 'user' as 'user',
         content: userMessageContent,
         timestamp: new Date().toISOString(),
     };
+    const tempAssistantId = uuidv4(); 
+    // <<< Restore assistantPlaceholder object creation >>>
+    const assistantPlaceholder: Message = {
+        id: tempAssistantId,
+        conversation_id: conversationIdToSend,
+        role: 'assistant' as 'assistant',
+        content: '', 
+        timestamp: new Date().toISOString(),
+    };
+    // <<< STORE temp ID in Ref >>>
+    streamingMessagesRef.current[conversationIdToSend] = tempAssistantId;
+    // <<< ADD Mapping for Temp ID >>>
+    messageIdToConvoIdMapRef.current[tempAssistantId] = conversationIdToSend;
+
+    setError(null);
+    // <<< Clear Input Field >>>
+    setCurrentInput('');
 
     try {
-      // Add user message optimistically
-       setCurrentMessages(prev => [...prev, tempUserMessage]);
+       // <<< REMOVE diagnostic logs >>>
+       // console.log('[handleSendMessage] Logging messages BEFORE adding optimistic ones:');
+       // currentMessages.forEach((m, idx) => console.log(`  [Before ${idx}]: ID=${m.id}, Role=${m.role}`));
 
-      // Invoke backend to send message and get response
+       setCurrentMessages(prev => {
+         // console.log(`[handleSendMessage] Inside setCurrentMessages. Prev count: ${prev.length}`);
+         const newState = [...prev, userMessage, assistantPlaceholder];
+         // console.log(`[handleSendMessage] Added optimistic messages. New count: ${newState.length}. TempAssistantID: ${tempAssistantId}`);
+         return newState;
+       });
+       
+       // <<< REMOVE diagnostic logs >>>
+       // console.log('[handleSendMessage] Logging messages AFTER requesting optimistic update:');
+       // currentMessages.forEach((m, idx) => console.log(`  [After Req ${idx}]: ID=${m.id}, Role=${m.role}`));
+       
+       // --- Set streaming STATE to true --- 
+       setStreamingStatus(prev => ({ ...prev, [conversationIdToSend]: true }));
+
+       // <<< Log arguments JUST before invoking >>>
+       console.log(`[handleSendMessage] Invoking send_message with convoId: ${conversationIdToSend}, content: "${userMessageContent.substring(0, 50)}..."`);
+       
+       // Invoke backend
       await invoke('send_message', {
-        conversationId: currentConversationId,
-        content: userMessageContent,
+         conversationId: conversationIdToSend,
+         content: userMessageContent
       });
       console.log("Message sent to backend.");
-      // Response will arrive via the 'chat_update' event listener
-      // Reload conversations to update the sort order (last_updated_at)
-      await loadConversations(); 
 
     } catch (err) {
-      console.error('Error sending message:', err);
+      console.error('Error sending message or during setup:', err); 
       setError(String(err));
-      // Remove optimistic message if sending failed
-      setCurrentMessages(prev => prev.filter(m => m.id !== tempUserMessage.id));
-    } finally {
-      setIsLoading(false);
-      // Don't set isStreaming here, wait for first chunk event
-    }
+      setCurrentMessages(prev => prev.filter(m => m.id !== userMessage.id && m.id !== tempAssistantId));
+      // --- Clear streaming REF & STATE on error --- 
+      if (conversationIdToSend) {
+          streamingMessagesRef.current[conversationIdToSend] = null; // Clear ref
+          setStreamingStatus(prev => ({ ...prev, [conversationIdToSend]: false })); // Clear state
+      }
+    } 
   };
 
-  // Handle Stopping Generation
+  // Handle Stopping Generation (Update Ref & State)
   const handleStopGeneration = async () => {
-    // Capture state *before* potentially changing it
-    const streamingBefore = isStreaming;
-    const streamIdBefore = streamingMessageId;
-    
-    if (!streamingBefore || !streamIdBefore) return;
-    console.log(`handleStopGeneration: Called. isStreaming=${streamingBefore}, id=${streamIdBefore}. Resetting state.`); // ADDED LOG
-    const messageIdToStop = streamIdBefore;
-    const currentConvoId = currentConversationId;
+    const conversationIdToStop = currentConversationIdRef.current;
+    if (!conversationIdToStop) { return; }
 
-    // Reset streaming state immediately
-    setIsStreaming(false);
-    console.log(`handleStopGeneration: State AFTER setIsStreaming(false): isStreaming=false (expected)`); // ADDED LOG
-    setStreamingMessageId(null);
+    // --- Get message ID from the REF --- 
+    const messageIdToStop = streamingMessagesRef.current[conversationIdToStop];
+    
+    if (!messageIdToStop) {
+        console.warn(`handleStopGeneration: Could not find streaming message ID in ref for convo ${conversationIdToStop}.`);
+        return;
+    }
+    
+    console.log(`handleStopGeneration: Requesting stop for message ID: ${messageIdToStop} in convo ${conversationIdToStop}.`); 
+
+    // --- Clear streaming REF & STATE --- 
+    streamingMessagesRef.current[conversationIdToStop] = null;
+    setStreamingStatus(prev => ({ ...prev, [conversationIdToStop]: false }));
+    console.log(`[handleStopGeneration] Cleared streaming ref & state for ${conversationIdToStop}.`);
 
     // Invoke backend stop signal
     try {
@@ -1189,7 +1007,7 @@ function App() {
     } catch (err) {
       console.error('Error sending stop generation signal:', err);
       setError(`Failed to stop generation: ${String(err)}`);
-      // Optionally revert UI state if needed, but usually stopping is final
+      // Consider if we need to revert state/ref if stop signal fails?
     }
   };
 
@@ -1202,7 +1020,7 @@ function App() {
           await invoke('delete_conversation', { conversationId: idToDelete });
           console.log(`Conversation ${idToDelete} deleted.`);
           // Update state immediately
-          const remainingConvos = conversations.filter(c => c.id !== idToDelete);
+              const remainingConvos = conversations.filter(c => c.id !== idToDelete);
           setConversations(remainingConvos);
           
           // If the deleted one was selected, select the first remaining one or null
@@ -1227,7 +1045,7 @@ function App() {
       if (!currentConversationId) return;
       console.log(`Changing model for ${currentConversationId} to ${newModelConfigId}`);
       setError(null);
-      setIsLoading(true);
+      // Remove setIsLoading(true) / setIsLoading(false) here - loading is per-stream now
       try {
           await invoke('update_conversation_model', { 
               conversationId: currentConversationId,
@@ -1243,8 +1061,6 @@ function App() {
       } catch (err) {
           console.error('Error updating conversation model:', err);
           setError(String(err));
-      } finally {
-          setIsLoading(false);
       }
   };
 
@@ -1254,7 +1070,7 @@ function App() {
       await loadConversations(); // Reload convos in case a model used by one was deleted
   };
 
-  // --- Rename Handlers ---
+  // --- RE-ADD Rename Handlers ---
   const handleStartEditing = (conv: Conversation) => {
     setEditingConversationId(conv.id);
     setEditingTitle(conv.title);
@@ -1289,7 +1105,6 @@ function App() {
         newTitle: newTitle 
       });
       console.log('Renamed conversation on backend:', idToRename);
-      // Refetch might be needed if backend fails, or handle error specifically
     } catch (err) {
       console.error('Error renaming conversation:', err);
       setError(String(err));
@@ -1301,14 +1116,13 @@ function App() {
       );
     } 
   };
-  // --- End Rename Handlers ---
 
-  // Handle Copying Message Content (Clipboard API import commented out for now)
+  // RE-ADD Handle Copying Message Content
   const handleCopy = async (id: string, content: string) => {
     console.log(`Attempting to copy message ${id}`);
     setError(null);
     try {
-      await writeText(content); // Uncommented clipboard call
+      await writeText(content);
       setCopiedMessageId(id);
       setTimeout(() => setCopiedMessageId(null), 1500); // Reset icon after 1.5s
     } catch (err) {
@@ -1318,91 +1132,191 @@ function App() {
     }
   };
 
-  // Handle Regenerating Last Assistant Response (Requires backend command)
+  // RE-ADD Handle Regenerating Last Assistant Response (Placeholder)
   const handleRegenerate = async () => {
-      if (!currentConversationId) return;
-      console.log(`Regenerating last response for conversation ${currentConversationId}...`);
-      setError(null);
-      setIsLoading(true); // Use main loading state for now
-
-      // Optimistically remove the last assistant message from UI
-      let removedMessageId: string | null = null;
-      setCurrentMessages(prevMessages => {
-        if (prevMessages.length === 0) return prevMessages;
-        const lastMessage = prevMessages[prevMessages.length - 1];
-        if (lastMessage.role === 'assistant') {
-          removedMessageId = lastMessage.id; // Store ID for potential rollback
-          console.log(`Optimistically removing assistant message ${removedMessageId}`);
-          return prevMessages.slice(0, -1); // Return array without the last message
-        } else {
-          console.warn("Regenerate called but last message is not from assistant.");
-          return prevMessages; // No change if last message isn't assistant
-        }
-      });
-
-      try {
-        // Assumes backend has a command 'regenerate_last_response'
-        await invoke('regenerate_last_response', { conversationId: currentConversationId });
-        console.log('Regenerate command invoked.');
-        // Backend should handle deleting old msg and sending new chunks via listener
-      } catch (err) {
-          console.error('Error invoking regenerate command:', err);
-          setError(`Failed to invoke regenerate: ${String(err)}`);
-          // Don't reset isLoading here, use finally
-      } finally {
-          // Ensure isLoading is reset after the invoke attempt, regardless of stream outcome
-          setIsLoading(false); 
-      }
-      // isLoading will be set to false by the stream finished listener
+    console.warn("handleRegenerate needs to be updated for the queue-based streaming logic.");
+    setError("Regenerate function not yet updated.");
   };
 
-  // Effect to load messages when currentConversationId changes
+  // <<< REPLACE Listener Setup Effect >>>
   useEffect(() => {
-    loadMessages(currentConversationId);
-  }, [currentConversationId]);
-
-  // --- Global Shortcut Setup (runs only once) --- 
-  useEffect(() => {
-    let isRegistered = false;
-    const shortcut = 'Command+N'; 
-
-    const registerShortcut = async () => {
+    console.log("[Effect Listener Setup] Setting up stream listeners...");
+    // Set up event listeners for streaming events
+    const setupStreamListeners = async () => {
       try {
-        console.log('[Shortcut] Attempting to register shortcut...');
-        // Call the function held by the ref's current property
-        await register(shortcut, () => {
-          console.log(`[Shortcut] ${shortcut} triggered.`);
-          // --- Debounce the handler call --- 
-          if (shortcutDebounceTimer.current) {
-            clearTimeout(shortcutDebounceTimer.current);
+        // Listen for stream started events
+        console.log("[Effect Listener Setup] Registering assistant_stream_started...");
+        const unlisten1 = await listen<AssistantStreamStarted>('assistant_stream_started', event => {
+          const { conversationId, messageId } = event.payload;
+          console.log(`[Listener Callback - Started] Stream started: convoId=${conversationId}, msgId=${messageId}`);
+
+          // Update mapping from message ID to conversation ID
+          messageIdToConvoIdMapRef.current[messageId] = conversationId;
+
+          // Update streaming status
+          setStreamingStatus(prev => ({ ...prev, [conversationId]: true }));
+
+          // Store streaming message ID (The REAL one from backend)
+          streamingMessagesRef.current[conversationId] = messageId;
+
+          // --- Swap Temp ID with Real ID in state ---
+          // Find temp ID based on convo ID (MUST exist if started event is received after handleSendMessage)
+          const tempAssistantId = Object.keys(messageIdToConvoIdMapRef.current).find(key =>
+             messageIdToConvoIdMapRef.current[key] === conversationId && key !== messageId
+          );
+          // ^^^ This logic to find temp ID might be brittle, relies on map state.
+          // Consider refining how temp ID is passed or retrieved if issues arise.
+
+          if (tempAssistantId && conversationId === currentConversationIdRef.current) {
+              console.log(`[Listener Callback - Started] Swapping temp ID ${tempAssistantId} with real ID ${messageId} in UI state.`);
+              setCurrentMessages(prevMessages => prevMessages.map(msg =>
+                 msg.id === tempAssistantId ? { ...msg, id: messageId } : msg
+              ));
+              // Remove the temp ID mapping once swapped
+              delete messageIdToConvoIdMapRef.current[tempAssistantId];
+          } else if (tempAssistantId) {
+              console.log(`[Listener Callback - Started] Real ID ${messageId} received for background convo ${conversationId}. State update skipped, temp mapping removed.`);
+              // Remove the temp ID mapping even if not visible
+              delete messageIdToConvoIdMapRef.current[tempAssistantId];
+          } else {
+              console.warn(`[Listener Callback - Started] Could not find temp ID in map for convo ${conversationId} when started event received for ${messageId}`);
           }
-          shortcutDebounceTimer.current = setTimeout(() => {
-            console.log('[Shortcut] Debounced execution. Calling handler via ref.');
-            handleNewConversationRef.current(); // Call the latest handler
-            shortcutDebounceTimer.current = null; // Clear timer after execution
-          }, 100); // Reduced debounce delay (100ms)
         });
-        isRegistered = true;
-        console.log(`[Shortcut] ${shortcut} registered successfully.`);
-      } catch (err: unknown) {
-        // ... error handling ...
+
+        // Listen for message chunks
+        console.log("[Effect Listener Setup] Registering assistant_message_chunk...");
+        const unlisten2 = await listen<AssistantMessageChunk>('assistant_message_chunk', event => {
+            // Use the existing direct update logic (no queue)
+            const { messageId, delta } = event.payload;
+            const chunkConversationId = messageIdToConvoIdMapRef.current[messageId];
+            if (chunkConversationId && chunkConversationId === currentConversationIdRef.current) {
+                setCurrentMessages(prevMessages =>
+                prevMessages.map(msg =>
+                    msg.id === messageId
+                    ? { ...msg, content: msg.content + delta }
+                    : msg
+                )
+                );
+            }
+        });
+
+        // Listen for stream finished events
+        console.log("[Effect Listener Setup] Registering assistant_stream_finished...");
+        const unlisten3 = await listen<AssistantStreamFinished>('assistant_stream_finished', async (event) => { // <<< Make callback async
+          const { messageId } = event.payload;
+          const conversationId = messageIdToConvoIdMapRef.current[messageId];
+
+          console.log(`[Listener Callback - Finished] Stream finished: msgId=${messageId}, convoId=${conversationId}`);
+
+          if (conversationId) {
+            // Clear streaming status first
+            setStreamingStatus(prev => ({ ...prev, [conversationId]: false }));
+            streamingMessagesRef.current[conversationId] = null;
+            console.log(`[Listener Callback - Finished] Cleared streaming state for ${conversationId}`);
+
+            // <<< Check Title Generation based on FRESH data >>>
+            const currentUtilModelId = utilityModelConfigIdRef.current; // Get util model ID
+            try {
+                console.log(`[Listener Callback - Finished] Fetching latest conversations before title check for ${conversationId}...`)
+                // --- Fetch the specific conversation that just finished ---
+                // Note: This assumes storage.get_conversation exists and is exposed.
+                // If not, fetching all is a fallback, but less efficient.
+                // Let's stick to fetching all for now as it's already implemented.
+                const latestConversations = await invoke<Conversation[]>('list_conversations');
+                const currentConvo = latestConversations.find(c => c.id === conversationId);
+
+                if (currentConvo && currentConvo.title === "New Chat" && currentUtilModelId) {
+                   console.log(`[Listener Callback - Finished] Triggering title generation for ${conversationId}`);
+
+                   // <<< Use async/await for invoke >>>
+                   try {
+                       await invoke('generate_conversation_title', {
+                           conversationId: conversationId,
+                           utilityModelConfigId: currentUtilModelId
+                       });
+                       console.log(`[Listener Callback - Finished] Title generation invoke SUCCEEDED for ${conversationId}.`);
+                       // <<< REMOVE EXPLICIT REFRESH VIA setTimeout >>>
+                       /*
+                       setTimeout(async () => {
+                           try {
+                             console.log(`[Listener Callback - Finished] Delay finished, explicitly fetching conversations...`);
+                             const refreshedConvos = await invoke<Conversation[]>('list_conversations');
+                             // Sort convos again after fetching
+                             refreshedConvos.sort((a, b) =>
+                               new Date(b.last_updated_at).getTime() - new Date(a.last_updated_at).getTime()
+                             );
+                             setConversations(refreshedConvos);
+                             console.log(`[Listener Callback - Finished] Explicitly set ${refreshedConvos.length} conversations after title generation.`);
+                           } catch (refreshErr) {
+                             console.error(`[Listener Callback - Finished] Error explicitly refreshing conversations:`, refreshErr);
+                           }
+                       }, 300); // 300ms delay
+                       */
+                   } catch (err) {
+                       console.error(`[Listener Callback - Finished] Title generation invoke FAILED for ${conversationId}:`, err);
+                   }
+                } else {
+                     console.log(`[Listener Callback - Finished] Conditions not met for title generation (Fetched Title: ${currentConvo?.title}, UtilModel: ${currentUtilModelId})`);
+                }
+            } catch (listErr) {
+                console.error(`[Listener Callback - Finished] Error fetching conversations for title check:`, listErr);
+            }
+            // <<< End Title Check Logic >>>
+
+            // Reload messages ONLY if the finished stream belongs to the currently viewed conversation
+            if (conversationId === currentConversationIdRef.current) {
+              console.log(`[Listener Callback - Finished] Reloading messages for current convo ${conversationId}`);
+              loadMessages(conversationId);
+            } else {
+               console.log(`[Listener Callback - Finished] Stream finished for background convo ${conversationId}. No message reload needed.`);
+            }
+
+            // Clean up reference mapping (only the real ID should remain at this point)
+            delete messageIdToConvoIdMapRef.current[messageId];
+            console.log(`[Listener Callback - Finished] Cleaned up map ref for message ${messageId}`);
+
+          } else { // Case where conversationId couldn't be found from messageId
+             console.warn(`[Listener Callback - Finished] No conversation ID found in map ref for finished message ${messageId}.`);
+          }
+        });
+
+        // <<< ADD Listener for conversation updates (e.g., title changes) >>>
+        console.log("[Effect Listener Setup] Registering conversation_updated...");
+        const unlisten4 = await listen<{ conversationId: string }>('conversation_updated', async (event) => {
+            const { conversationId } = event.payload;
+            console.log(`[Listener Callback - Updated] Received update for conversation: ${conversationId}. Refreshing list.`);
+            // Reload the entire conversation list to reflect changes like the new title
+            await loadConversations(); // Use the existing loadConversations function
+        });
+
+        // Store cleanup functions
+        unlistenStartedRef.current = unlisten1;
+        unlistenChunkRef.current = unlisten2;
+        unlistenFinishedRef.current = unlisten3;
+        unlistenUpdatedRef.current = unlisten4; // Store the new cleanup function
+        console.log("[Effect Listener Setup] Listeners registered.");
+      } catch (error) {
+        console.error("[Effect Listener Setup] Failed to setup listeners:", error);
+        setError("Failed to connect to backend streaming events.");
       }
     };
 
-    registerShortcut();
+    setupStreamListeners();
 
+    // Cleanup listeners on unmount
     return () => {
-      if (isRegistered) {
-        // Clear debounce timer on unmount too
-        if (shortcutDebounceTimer.current) {
-          clearTimeout(shortcutDebounceTimer.current);
-        }
-        unregisterAll()
-          .then(() => console.log('[Shortcut] Global shortcuts unregistered.'))
-          .catch((err: unknown) => { /* ... error handling ... */ }); 
-      }
+      console.log("[Effect Listener Cleanup] Cleaning up stream listeners...");
+      if (unlistenStartedRef.current) unlistenStartedRef.current();
+      if (unlistenChunkRef.current) unlistenChunkRef.current();
+      if (unlistenFinishedRef.current) unlistenFinishedRef.current();
+      if (unlistenUpdatedRef.current) unlistenUpdatedRef.current(); // Clean up the new listener
+      unlistenStartedRef.current = null;
+      unlistenChunkRef.current = null;
+      unlistenFinishedRef.current = null;
+      unlistenUpdatedRef.current = null; // Clear the new ref
+      console.log("[Effect Listener Cleanup] Listeners cleaned up.");
     };
-  }, []); // Empty dependency array: Run only once on mount
+  }, [loadMessages, setConversations, loadConversations]); // <<< ADD loadConversations dependency >>>
 
   return (
     <div className="relative flex h-screen bg-background text-foreground"> {/* Removed pt-10 */}
@@ -1413,14 +1327,14 @@ function App() {
         <div className="h-3 w-3 rounded-full bg-green-500"></div>
       </div>
 
-      {/* Sidebar */} 
+      {/* Sidebar */}
       <aside className="w-64 border-r border-border flex flex-col flex-shrink-0">
         {/* Top Section: New Chat Button - Use p-3 for height consistency */}
         <div data-tauri-drag-region> {/* Apply drag region to outer wrapper */} 
           <div className="p-3 border-b border-border flex justify-end"> {/* Inner container for padding/layout */} 
             <Button variant="outline" size="icon" onClick={handleNewConversation} title="New Chat"> {/* Use size=icon and add title */} 
               <Plus className="h-4 w-4" /> {/* Removed mr-2 */} 
-            </Button>
+          </Button>
           </div>
         </div>
 
@@ -1447,17 +1361,17 @@ function App() {
             >
               {editingConversationId === conv.id ? (
                  <input 
-                    type="text"
-                    value={editingTitle}
-                    onChange={(e) => setEditingTitle(e.target.value)}
+                  type="text"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
                     onBlur={() => handleSaveEditing(conv.id)} // Save on blur
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSaveEditing(conv.id);
-                        if (e.key === 'Escape') handleCancelEditing();
-                    }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveEditing(conv.id);
+                    if (e.key === 'Escape') handleCancelEditing();
+                  }}
                     className="flex-grow bg-transparent rounded-sm px-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                     autoFocus // Focus the input when it appears
-                 />
+                />
               ) : (
                   <span className="truncate flex-grow">{conv.title || `Chat ${conv.id.substring(0, 4)}`}</span>
               )}
@@ -1467,7 +1381,7 @@ function App() {
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
                    <Button variant="ghost" size="icon" className="h-6 w-6 hover:text-destructive" onClick={(e) => { e.preventDefault(); handleDeleteConversation(conv.id); }} title="Delete">
                         <Trash2 className="h-3 w-3" /> 
-                    </Button>
+                  </Button>
                 </div>
               )}
             </Link>
@@ -1481,7 +1395,7 @@ function App() {
                 variant={location.pathname === '/settings' ? 'secondary' : 'ghost'}
                 className="w-full justify-start"
             >
-              <Settings className="mr-2 h-4 w-4" /> Settings
+              <Settings className="mr-2 h-4 w-4" /> settings {/* Lowercase */}
             </Button>
           </Link>
         </div>
@@ -1489,55 +1403,55 @@ function App() {
 
       {/* Main content area - Use main tag, apply pattern from guide */} 
       <main className="flex flex-col flex-grow min-w-0 min-h-0">
-        {/* Error Display */} 
+        {/* Error Display & REMOVE Temporary Counter Display */} 
         {error && (
           <div className="p-4 bg-red-100 text-red-700 border-b border-red-200 flex-shrink-0 z-10">
             Error: {error} <Button variant="ghost" size="sm" onClick={() => setError(null)}>Dismiss</Button>
-          </div>
+           </div>
         )}
-        
+        {/* <div className="p-1 text-xs text-muted-foreground">Chunk Counter: {chunkRenderCounter}</div> */}
+
         {/* The single scroll container for routed content */} 
         <div className="flex-grow overflow-y-auto min-h-0">
-            <Routes>
+        <Routes>
                 <Route path="/chat/:conversationId" element={
                     currentConversationId && availableModels.length > 0 ? (
-                        <ChatArea 
-                            currentMessages={currentMessages} 
-                            currentInput={currentInput} 
-                            setCurrentInput={setCurrentInput} 
-                            handleSendMessage={handleSendMessage} 
-                            currentConversation={currentConversation}
-                            availableModels={availableModels}
-                            handleModelChange={handleModelChange}
-                            isStreaming={isStreaming}
+              <ChatArea 
+                currentMessages={currentMessages} 
+                currentInput={currentInput} 
+                setCurrentInput={setCurrentInput} 
+                handleSendMessage={handleSendMessage} 
+                currentConversation={currentConversation}
+                availableModels={availableModels}
+                handleModelChange={handleModelChange}
                             handleStopGeneration={handleStopGeneration}
                             handleCopy={handleCopy}
                             handleRegenerate={handleRegenerate}
                             copiedMessageId={copiedMessageId}
-                            isLoading={isLoading}
-                            streamingMessageId={streamingMessageId}
+                            isLoading={!!streamingStatus[currentConversation?.id ?? '']}
+                            streamingMessageId={streamingMessagesRef.current[currentConversation?.id ?? '']}
                         />
                     ) : (
                         <div className="flex h-full items-center justify-center text-muted-foreground p-6">
-                            Select a conversation or start a new one.
-                        </div>
+                  Select a conversation or start a new one.
+              </div>
                     )
                 } />
                 <Route path="/settings" element={
                     <SettingsPage 
                         onModelsChanged={handleModelsChanged} 
-                        availableModels={availableModels}
+                availableModels={availableModels}
                         utilityModelConfigId={utilityModelConfigId}
                         setUtilityModelConfigId={setUtilityModelConfigId}
-                    />
-                } />
+             />
+          } />
                 <Route path="*" element={
                     <div className="flex h-full items-center justify-center text-muted-foreground p-6">
                         {conversations.length > 0 ? "Invalid route." : "No conversations found."}
                     </div>
                 } />
-            </Routes>
-        </div>
+        </Routes>
+      </div>
       </main>
     </div>
   );
