@@ -700,8 +700,10 @@ function App() {
   const unlistenStartedRef = useRef<(() => void) | null>(null);
   const unlistenChunkRef = useRef<(() => void) | null>(null);
   const unlistenFinishedRef = useRef<(() => void) | null>(null);
-  // <<< ADD Ref for conversation updated listener >>>
   const unlistenUpdatedRef = useRef<(() => void) | null>(null);
+
+  // <<< ADD Ref to store partial content for ongoing streams >>>
+  const partialContentRef = useRef<Record<string, string>>({});
 
   // Refs to access latest state in callbacks
   const currentConversationIdRef = useRef<string | null>(currentConversationId);
@@ -822,44 +824,64 @@ function App() {
 
   // Effect to load messages when currentConversationId changes
   useEffect(() => {
-    if (currentConversationId && !streamingStatus[currentConversationId]) {
-      // Target conversation is NOT streaming, load from DB
-      console.log(`[loadMessages Effect] Loading from DB for ${currentConversationId}`);
-      loadMessages(currentConversationId);
-    } else if (currentConversationId) {
-      // Target conversation IS streaming, ensure current state reflects it
-      console.log(`[loadMessages Effect] Switching view to ALREADY STREAMING convo ${currentConversationId}. State should contain partial message.`);
-      // No explicit load needed, state updates come from queue processor.
-      // We might need to trigger a re-render if just switching ID isn't enough,
-      // but the change in currentConversationId passed to ChatArea SHOULD trigger it.
-      // If issues persist, we could potentially filter currentMessages here,
-      // but that assumes the queue processor has kept the state consistent.
-                    } else {
-      // currentConversationId is null
+    const conversationId = currentConversationId; // Capture ID for async use
+
+    if (!conversationId) {
       console.log(`[loadMessages Effect] Skipping load because conversation ID is null.`);
       setCurrentMessages([]); // Clear messages if no conversation is selected
+      return; // Exit early
     }
-  }, [currentConversationId, loadMessages, streamingStatus]);
 
-  const handleChunkReceived = (event: any) => {
-    const payload = event.payload as AssistantMessageChunk;
-    const { messageId, delta } = payload;
-    const chunkConversationId = messageIdToConvoIdMapRef.current[messageId];
-    // <<< MODIFY: Directly update state if conversation matches >>>
-    if (chunkConversationId && chunkConversationId === currentConversationIdRef.current) {
-      setCurrentMessages(prevMessages =>
-        prevMessages.map(msg =>
-          msg.id === messageId
-            ? { ...msg, content: msg.content + delta } 
-            : msg
-        )
-      );
-    } 
-  };
+    // <<< Access streaming status and message ID for the target conversation >>>
+    const isStreaming = streamingStatus[conversationId];
+    const streamingMsgId = streamingMessagesRef.current[conversationId];
 
-  const handleStreamFinished = (event: any) => {
-    // ...
-  }
+    console.log(`[loadMessages Effect] Handling ID: ${conversationId}, Streaming: ${isStreaming}, StreamingMsgID: ${streamingMsgId}`);
+
+    const loadAndSetMessages = async () => {
+      setError(null); // Clear previous errors
+      try {
+        console.log(`[loadMessages Effect] Fetching messages from DB for ${conversationId}...`);
+        const dbMsgs = await invoke<Message[]>('get_conversation_messages', { conversationId });
+        dbMsgs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        console.log(`[loadMessages Effect] Fetched ${dbMsgs.length} messages from DB for ${conversationId}.`);
+
+        if (isStreaming && streamingMsgId) {
+          // Conversation is streaming, add placeholder if not in DB result
+          const existingInDb = dbMsgs.some(msg => msg.id === streamingMsgId);
+          if (!existingInDb) {
+            console.log(`[loadMessages Effect] Streaming: Adding placeholder for ${streamingMsgId}`);
+            // <<< Retrieve saved partial content >>>
+            const savedPartialContent = partialContentRef.current[conversationId] ?? '';
+            console.log(`[loadMessages Effect] Restoring partial content: "${savedPartialContent.substring(0,50)}..."`);
+            const streamingPlaceholder: Message = {
+              id: streamingMsgId,
+              conversation_id: conversationId,
+              role: 'assistant',
+              content: savedPartialContent, // Use saved partial content
+              timestamp: new Date().toISOString(), // Placeholder timestamp
+            };
+            setCurrentMessages([...dbMsgs, streamingPlaceholder]);
+          } else {
+            // Placeholder/Message already saved in DB (stream likely just finished)
+            console.log(`[loadMessages Effect] Streaming: Message ${streamingMsgId} already exists in DB. Using DB state.`);
+            setCurrentMessages(dbMsgs); // Use DB messages directly
+          }
+        } else {
+          // Conversation is NOT streaming, just set DB messages
+          console.log(`[loadMessages Effect] Not Streaming: Setting messages for ${conversationId} from DB.`);
+          setCurrentMessages(dbMsgs);
+        }
+      } catch (err) {
+        console.error(`[loadMessages Effect] Error loading messages for ${conversationId}:`, err);
+        setError(String(err));
+        setCurrentMessages([]); // Clear messages on error
+      }
+    };
+
+    loadAndSetMessages();
+    // <<< DEPENDENCIES: Include streamingStatus now >>>
+  }, [currentConversationId, streamingStatus]);
 
   // <<< ADD Effect to handle conversation refresh trigger >>>
   useEffect(() => {
@@ -1138,7 +1160,7 @@ function App() {
     setError("Regenerate function not yet updated.");
   };
 
-  // <<< REPLACE Listener Setup Effect >>>
+  // <<< REPLACE Listener Setup Effect - Remove loadMessages from dependencies >>>
   useEffect(() => {
     console.log("[Effect Listener Setup] Setting up stream listeners...");
     // Set up event listeners for streaming events
@@ -1152,6 +1174,9 @@ function App() {
 
           // Update mapping from message ID to conversation ID
           messageIdToConvoIdMapRef.current[messageId] = conversationId;
+
+          // <<< Initialize partial content store for this stream >>>
+          partialContentRef.current[conversationId] = '';
 
           // Update streaming status
           setStreamingStatus(prev => ({ ...prev, [conversationId]: true }));
@@ -1189,6 +1214,14 @@ function App() {
             // Use the existing direct update logic (no queue)
             const { messageId, delta } = event.payload;
             const chunkConversationId = messageIdToConvoIdMapRef.current[messageId];
+            
+            // <<< ALWAYS update partial content ref >>>
+            if (chunkConversationId && delta) {
+              partialContentRef.current[chunkConversationId] = 
+                (partialContentRef.current[chunkConversationId] || '') + delta;
+            }
+
+            // <<< Update UI state ONLY if the conversation is currently viewed >>>
             if (chunkConversationId && chunkConversationId === currentConversationIdRef.current) {
                 setCurrentMessages(prevMessages =>
                 prevMessages.map(msg =>
@@ -1275,6 +1308,12 @@ function App() {
             delete messageIdToConvoIdMapRef.current[messageId];
             console.log(`[Listener Callback - Finished] Cleaned up map ref for message ${messageId}`);
 
+            // <<< Clean up partial content store >>>
+            if (partialContentRef.current.hasOwnProperty(conversationId)) {
+              delete partialContentRef.current[conversationId];
+              console.log(`[Listener Callback - Finished] Cleaned up partial content ref for convo ${conversationId}`);
+            }
+
           } else { // Case where conversationId couldn't be found from messageId
              console.warn(`[Listener Callback - Finished] No conversation ID found in map ref for finished message ${messageId}.`);
           }
@@ -1316,7 +1355,7 @@ function App() {
       unlistenUpdatedRef.current = null; // Clear the new ref
       console.log("[Effect Listener Cleanup] Listeners cleaned up.");
     };
-  }, [loadMessages, setConversations, loadConversations]); // <<< ADD loadConversations dependency >>>
+  }, [/* loadMessages removed */ setConversations, loadConversations]); // <<< REMOVED loadMessages dependency >>>
 
   return (
     <div className="relative flex h-screen bg-background text-foreground"> {/* Removed pt-10 */}
