@@ -1,84 +1,66 @@
-# LocalChat - Local LLM Chat Application
+# localchat - Local LLM Chat Application
 
-A desktop application built with Rust, Tauri v2, React (TypeScript), and Tailwind CSS for interacting with various LLM APIs locally.
+A cross-platform desktop application built with Rust, Tauri v2, React (TypeScript), and Tailwind CSS for interacting with local or remote LLM APIs (OpenAI-compatible). 
 
-## Features
+## Core Features
 
-*   Cross-platform Desktop App (via Tauri)
-*   React + TypeScript Frontend with Tailwind CSS & shadcn/ui
-*   Rust Backend Core using Tokio & SQLx
-*   SQLite database for storing conversations and messages
-*   **Conversations:** List, create, rename, and delete conversations.
-*   **Messaging:** Send messages to configured LLM APIs (currently streams basic text).
-*   **Model Configuration:** Add, list, and delete LLM API configurations (OpenAI-compatible format) via Settings.
-*   **Chat Interface:** Sidebar for conversations, main chat view, model selection per conversation.
+*   **Cross-platform:** Runs on macOS (definitely), Windows (maybe), and Linux (maybe).
+*   **Local First:** Conversations and configurations are stored locally in a SQLite database.
+*   **Privacy-Focused:** No mandatory sign-up or cloud storage for your chats. API keys are stored securely using environment variables or the OS keyring (keyring support pending UI integration).
+*   **Multiple Conversations:** Organize chats in separate, persistent conversations.
+*   **Conversation Management:** Create, automatically rename (after first response), manually rename, and delete conversations.
+*   **Streaming Responses:** View AI responses in real-time as they are generated.
+*   **Configurable Models:**
+    *   Supports any OpenAI-compatible API endpoint.
+    *   Configure multiple models via the Settings page (Add, Edit, Delete).
+    *   Select different models per conversation.
+    *   Choose a "Utility Model" for background tasks (like conversation naming).
 *   **Markdown Rendering:**
-    *   GitHub Flavored Markdown (GFM) support (tables, etc.).
-    *   LaTeX math rendering (via KaTeX).
-    *   Code syntax highlighting (via highlight.js).
-    *   Mermaid diagram rendering.
-    *   Support for definition lists (`<dl>`) and collapsible sections (`<details>`).
-    *   Links automatically open in the system's default browser.
+    *   GitHub Flavored Markdown (GFM).
+    *   LaTeX math rendering (KaTeX).
+    *   Code syntax highlighting (highlight.js).
+    *   Mermaid diagrams.
+*   **Modern UI:** Built with React, TypeScript, Tailwind CSS, and shadcn/ui components.
 
-## Setup
+## Setup & Running Locally
 
 **Prerequisites:**
 
-1.  **Node.js and pnpm:** Install Node.js (LTS recommended) from [nodejs.org](https://nodejs.org/). Then install pnpm globally: `npm install -g pnpm`
+1.  **Node.js & pnpm:** Install Node.js (LTS recommended) from [nodejs.org](https://nodejs.org/). Then install pnpm: `npm install -g pnpm`.
 2.  **Rust:** Install Rust via [rustup.rs](https://rustup.rs/).
-3.  **Tauri v2 Prerequisites:** Follow the Tauri setup guide for your OS: [Tauri Prerequisites](https://tauri.app/v2/guides/getting-started/prerequisites/). This usually involves installing build tools (like C++ compiler, webview libraries).
-4.  **SQLx CLI:** Install the command-line tool for `sqlx` database checks: 
-    ```bash
-    cargo install sqlx-cli --no-default-features --features native-tls,sqlite
-    ```
+3.  **Tauri v2 Prerequisites:** Follow the Tauri setup guide for your OS: [Tauri Prerequisites](https://tauri.app/v2/guides/getting-started/prerequisites/). This typically involves installing build tools (like a C++ compiler, `webkit2gtk` on Linux, etc.).
 
-**Installation:**
+**Running:**
 
-1.  Clone the repository: `git clone <repository-url>`
-2.  Navigate into the project directory: `cd localchat`
-3.  Install frontend dependencies: `pnpm install`
-4.  Prepare the SQLx query cache (needed once initially and after changing SQL queries in `src-tauri/src/storage.rs` if not using `sqlx watch`):
-    ```bash
-    # Define the database path (adjust for your OS if needed)
-    # macOS Example:
-    DB_PATH="$HOME/Library/Application Support/com.localchat.app/localchat.sqlite"
-    # Linux Example (adjust path):
-    # DB_PATH="$HOME/.local/share/com.localchat.app/localchat.sqlite"
-    # Windows Example (adjust path):
-    # DB_PATH="%APPDATA%\com.localchat.app\localchat.sqlite"
-
-    # Create the directory if it doesn't exist (important!)
-    mkdir -p "$(dirname "$DB_PATH")"
-    
-    # Run prepare from the project root
-    DATABASE_URL="sqlite://$DB_PATH?mode=rwc" cargo sqlx prepare --workspace
-    ```
-    *Note: The `.sqlx` directory generated in `src-tauri/` should be committed to version control.* 
-
-## Development
-
-1.  Navigate to the project directory (`localchat`).
-2.  Run the Tauri development server:
+1.  **Clone:** `git clone <repository-url>`
+2.  **Navigate:** `cd localchat`
+3.  **Install Frontend Deps:** `pnpm install`
+4.  **Run Development App:**
     ```bash
     pnpm tauri dev
     ```
-    This compiles the Rust backend, starts the Vite frontend dev server, and opens the application window. Changes to frontend code (`src/`) will hot-reload. Changes to backend code (`src-tauri/`) require a restart of the dev server.
+    This compiles the Rust backend, starts the Vite frontend dev server, and opens the application window. Changes to frontend code (`src/`) will hot-reload. Changes to backend code (`src-tauri/`) require restarting the command.
 
-3.  **(Optional but Recommended) Run SQLx Watch:** To automatically update the SQLx query cache when you modify Rust code containing SQL queries, open a **separate terminal** in the project root and run (using the `DB_PATH` variable from Installation step 4):
+    **Note on Database Schema Changes:** If you modify SQL queries within the Rust code (`src-tauri/src/storage.rs`), the `sqlx` library needs to verify these changes against the database schema during compilation. For this verification to work, you must have the `DATABASE_URL` environment variable set when running `pnpm tauri dev`. 
+    Example (macOS/Linux - adjust path as needed):
     ```bash
-    DATABASE_URL="sqlite://$DB_PATH?mode=rwc" cargo sqlx watch --workspace
+    DB_PATH="$HOME/Library/Application Support/com.localchat.app/localchat.sqlite"
+    mkdir -p "$(dirname "$DB_PATH")" # Ensure directory exists
+    DATABASE_URL="sqlite://$DB_PATH?mode=rwc" pnpm tauri dev
     ```
-    Leave this running while you develop.
+    If you don't modify SQL queries, you usually don't need to set `DATABASE_URL` explicitly for `tauri dev`.
 
-## Building
+## Building (Currently Not Working)
 
-1.  Navigate to the project directory (`localchat`).
-2.  Ensure dependencies are installed (`pnpm install`).
-3.  Run the Tauri build command:
-    ```bash
-    pnpm tauri build
-    ```
-    This creates a production build of the frontend and bundles it with the compiled Rust backend into a native application installer/package located in `src-tauri/target/release/bundle/`.
+The standard command to build a standalone application is:
+
+```bash
+pnpm tauri build
+```
+
+However, this is currently **not functional**. Development and testing should use `pnpm tauri dev`.
+
+*(Previous sections about SQLx CLI and preparing the query cache are omitted for simplicity, as `tauri dev` handles this sufficiently for development)*
 
 ## Linting & Formatting (Optional)
 

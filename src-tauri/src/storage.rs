@@ -160,7 +160,7 @@ impl StorageManager {
         
         let new_conversation = Conversation {
             id: Uuid::new_v4(),
-            title: "New Chat".to_string(), // Default title
+            title: "new chat".to_string(), // Default title
             created_at: Utc::now(),
             last_updated_at: Utc::now(),
             model_config_id: default_model_id,

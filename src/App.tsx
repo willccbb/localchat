@@ -1254,7 +1254,7 @@ function App() {
                 const latestConversations = await invoke<Conversation[]>('list_conversations');
                 const currentConvo = latestConversations.find(c => c.id === conversationId);
 
-                if (currentConvo && currentConvo.title === "New Chat" && currentUtilModelId) {
+                if (currentConvo && currentConvo.title === "new chat" && currentUtilModelId) {
                    console.log(`[Listener Callback - Finished] Triggering title generation for ${conversationId}`);
 
                    // <<< Use async/await for invoke >>>
@@ -1364,10 +1364,10 @@ function App() {
 
       {/* Sidebar */}
       <aside className="w-64 border-r border-border flex flex-col flex-shrink-0">
-        {/* Top Section: New Chat Button - Use p-3 for height consistency */}
+        {/* Top Section: new chat Button - Use p-3 for height consistency */}
         <div data-tauri-drag-region> {/* Apply drag region to outer wrapper */} 
           <div className="p-3 border-b border-border flex justify-end"> {/* Inner container for padding/layout */} 
-            <Button variant="outline" size="icon" onClick={handleNewConversation} title="New Chat"> {/* Use size=icon and add title */} 
+            <Button variant="outline" size="icon" onClick={handleNewConversation} title="new chat"> {/* Use size=icon and add title */} 
               <Plus className="h-4 w-4" /> {/* Removed mr-2 */} 
           </Button>
           </div>
